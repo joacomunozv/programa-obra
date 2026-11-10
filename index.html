@@ -149,6 +149,7 @@ a{color:var(--accent)}
 .f2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .btn{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:6px 12px}
 .btn:hover{background:var(--panel2)}
+a.btn{text-decoration:none;color:inherit;display:inline-block}
 .btn.pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
 .btn.dan{color:var(--crit)}
 .x{border:0;background:transparent;font-size:18px;line-height:1;color:var(--muted);padding:2px 6px}
@@ -168,6 +169,13 @@ a{color:var(--accent)}
 .empty{max-width:520px;margin:10vh auto;text-align:center}
 .empty h2{margin:0 0 8px}
 .empty .btn{margin:6px}
+body.ro .edit-only{display:none!important}
+.admin-only{display:none!important}
+body.isadmin .admin-only{display:inline-flex!important}
+#whoami{font-size:12px;opacity:.9;white-space:nowrap}
+.ubadge{font-size:11px;padding:1px 8px;border-radius:9px;background:var(--line2)}
+.ubadge.admin{background:var(--accent-soft);color:var(--accent)}
+.ubadge.off{background:rgba(214,69,59,.12);color:var(--crit)}
 .lgd{display:inline-flex;align-items:center;gap:5px;margin-right:12px;font-size:12px;color:var(--muted)}
 .lgd i{display:inline-block;width:18px;height:8px;border-radius:2px}
 @media (max-width:760px){
@@ -192,22 +200,24 @@ a{color:var(--accent)}
 <div id="top">
   <span class="brand">▦ Programa de Obra</span>
   <select id="projSel" title="Proyecto"></select>
-  <button class="tb hide-m" id="btnNewProj">Nuevo</button>
-  <button class="tb hide-m" id="btnProjMenu">Proyecto ▾</button>
+  <button class="tb hide-m edit-only" id="btnNewProj">Nuevo</button>
+  <button class="tb hide-m edit-only" id="btnProjMenu">Proyecto ▾</button>
   <span class="sp"></span>
   <span id="saveState"></span>
-  <button class="tb" id="btnImport">Importar</button>
+  <span id="whoami"></span>
+  <button class="tb admin-only" id="btnUsers">Usuarios</button>
+  <button class="tb edit-only" id="btnImport">Importar</button>
   <button class="tb hide-m" id="btnExport">Exportar ▾</button>
-  <button class="tb primary" id="btnSave" title="Ctrl+S">Guardar</button>
+  <button class="tb primary edit-only" id="btnSave" title="Ctrl+S">Guardar</button>
   <button class="tb" id="btnCfg" title="Configuración">⚙</button>
 </div>
 
 <div id="ribbon">
-  <div class="grp">
+  <div class="grp edit-only">
     <button class="rb" id="bUndo" title="Deshacer (Ctrl+Z)"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>
     <button class="rb" id="bRedo" title="Rehacer (Ctrl+Y)"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg></button>
   </div>
-  <div class="grp">
+  <div class="grp edit-only">
     <button class="rb" id="bAdd" title="Nueva tarea (Insert)"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Tarea</button>
     <button class="rb" id="bMs" title="Nuevo hito"><svg viewBox="0 0 24 24"><path d="m12 3 9 9-9 9-9-9z"/></svg>Hito</button>
     <button class="rb" id="bDel" title="Eliminar (Supr)"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
@@ -216,22 +226,26 @@ a{color:var(--accent)}
     <button class="rb" id="bUp" title="Subir"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
     <button class="rb" id="bDown" title="Bajar"><svg viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg></button>
   </div>
-  <div class="grp">
+  <div class="grp edit-only">
     <button class="rb" id="bLink" title="Vincular seleccionadas FC (Ctrl+F2)"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>Vincular</button>
     <button class="rb" id="bUnlink" title="Desvincular seleccionadas"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7M4 4l16 16"/></svg></button>
     <button class="rb" id="bInfo" title="Información de la tarea (Shift+F2)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>Info</button>
   </div>
-  <div class="grp hide-m">
+  <div class="grp hide-m edit-only">
     <span class="small muted">Avance</span>
     <button class="rb" data-pct="0">0%</button><button class="rb" data-pct="25">25</button><button class="rb" data-pct="50">50</button><button class="rb" data-pct="75">75</button><button class="rb" data-pct="100">100%</button>
   </div>
   <div class="grp">
     <button class="rb" id="bZoomOut" title="Alejar">−</button>
-    <select class="inp" id="zoomSel"><option value="dia">Día</option><option value="semana" selected>Semana</option><option value="mes">Mes</option></select>
+    <select class="inp" id="zoomSel" title="Escala de tiempo (Ctrl + rueda sobre el Gantt para zoom libre)"><option value="dia">Día</option><option value="semana" selected>Semana</option><option value="mes">Mes</option><option value="trim">Trimestre</option><option value="fit">Ajustar a pantalla</option><option value="custom" hidden>Personalizado</option></select>
     <button class="rb" id="bZoomIn" title="Acercar">+</button>
     <button class="rb" id="bToday" title="Ir a hoy">Hoy</button>
     <button class="rb" id="bCrit" title="Resaltar ruta crítica">Ruta crítica</button>
     <button class="rb" id="bBase" title="Mostrar línea base">Línea base</button>
+  </div>
+  <div class="grp" title="Tamaño de la vista (Ctrl + rueda sobre la tabla)">
+    <span class="small muted">Tamaño</span>
+    <button class="rb" id="bUiOut">−</button><button class="rb" id="bUiReset" style="min-width:46px;justify-content:center">100%</button><button class="rb" id="bUiIn">+</button>
   </div>
   <div class="grp">
     <input class="inp" id="fText" placeholder="Buscar…" style="width:130px">
@@ -336,14 +350,14 @@ const Cal = {
    ESTADO
    ===================================================================== */
 const S = {
-  cfg: LS.get('po_cfg', { apiUrl: '', token: '', user: '' }),
+  cfg: LS.get('po_cfg', { apiUrl: '', token: '', user: '' }), me: null, rol: 'admin',
   projects: [], project: null, tasks: [], feriados: [],
   dirty: false, undo: [], redo: [],
   collapsed: new Set(), sel: new Set(), anchor: null,
-  view: 'gantt', zoom: LS.get('po_zoom', 'semana'), showCrit: true, showBase: LS.get('po_base', false),
+  view: 'gantt', zoom: LS.get('po_zoom', 'semana'), ppdC: LS.get('po_ppdc', 8), ui: LS.get('po_ui', 1), showCrit: true, showBase: LS.get('po_base', false),
   vis: [], byUid: new Map(), stats: {},
 };
-const ZOOM = { dia: 26, semana: 8, mes: 2.6 };
+const ZOOM = { dia: 26, semana: 8, mes: 2.6, trim: 0.9 };
 const CT = { ASAP: 'Lo antes posible', SNET: 'No comenzar antes de', SNLT: 'No comenzar después de', FNET: 'No terminar antes de', FNLT: 'No terminar después de', MSO: 'Debe comenzar el', MFO: 'Debe finalizar el' };
 const CT_FROM_TXT = Object.fromEntries(Object.entries(CT).map(([k, v]) => [v.toLowerCase(), k]));
 const LT_ES = { FS: 'FC', SS: 'CC', FF: 'FF', SF: 'CF' };
@@ -605,36 +619,46 @@ function renderGrid() {
    GANTT (panel derecho)
    ===================================================================== */
 const G = { t0: 0, t1: 0, ppd: 8, RH: 26 };
+/* Tamaño de la vista: escala toda el área de trabajo (tabla, Gantt y pestañas) con CSS zoom. */
+const uiZ = () => S.ui || 1;
+function setUi(z) {
+  S.ui = Math.round(clamp(z, 0.5, 1.5) * 10) / 10; LS.set('po_ui', S.ui);
+  ['#split', '#view', '#drawer'].forEach(sel => { $(sel).style.zoom = S.ui; });
+  $('#bUiReset').textContent = Math.round(S.ui * 100) + '%';
+  if (S.zoom === 'fit' && S.project && S.view === 'gantt') renderGantt();
+}
+/** Píxeles por día según la escala elegida (fija, ajustada al proyecto o libre con Ctrl+rueda). */
+function ganttPpd(spanDays) {
+  if (S.zoom === 'fit') { const w = ($('#gwrap').clientWidth || 900) - 16; return clamp(w / Math.max(30, spanDays), 0.25, 40); }
+  if (S.zoom === 'custom') return clamp(S.ppdC || 8, 0.25, 40);
+  return ZOOM[S.zoom] || 8;
+}
 function renderGantt() {
-  G.ppd = ZOOM[S.zoom]; const ppd = G.ppd, RH = G.RH;
+  const RH = G.RH;
   const starts = S.tasks.filter(t => t.start).map(t => dn(t.start)), ends = S.tasks.filter(t => t.finish).map(t => dn(t.finish));
   const base = dn(S.project.inicio) || dn(todayIso());
   let a = starts.length ? Math.min(...starts, base) : base, b = ends.length ? Math.max(...ends) : base + 90;
   if (S.showBase) S.tasks.forEach(t => { if (t.bls) a = Math.min(a, dn(t.bls)); if (t.blf) b = Math.max(b, dn(t.blf)); });
   a -= 7; a -= (dowOf(a) + 6) % 7; // lunes
-  b += S.zoom === 'mes' ? 60 : 28;
-  G.t0 = a; G.t1 = b;
+  if (S.zoom === 'fit') b += 10;
+  G.ppd = ganttPpd(b - a + 1); const ppd = G.ppd;
+  // nivel de detalle del encabezado según el ancho disponible por día
+  const mode = ppd >= 18 ? 'dia' : ppd >= 4.5 ? 'semana' : ppd >= 1.6 ? 'mes' : 'trim';
+  if (S.zoom !== 'fit') b += mode === 'dia' || mode === 'semana' ? 28 : 60;
+  G.t0 = a; G.t1 = b; G.mode = mode;
   const W = (b - a + 1) * ppd, H = S.vis.length * RH + 40;
   const x = d => (d - a) * ppd;
   // ---- encabezado (2 niveles) ----
   let top = '', bot = '';
-  if (S.zoom === 'mes') {
-    for (let y = new Date(a * DAY).getUTCFullYear(); y <= new Date(b * DAY).getUTCFullYear(); y++) {
-      const s = Math.max(a, dn(y + '-01-01')), e = Math.min(b, dn(y + '-12-31'));
-      top += `<div style="left:${x(s)}px;width:${(e - s + 1) * ppd}px">${y}</div>`;
-    }
-    for (let d = a; d <= b;) {
-      const dt = new Date(d * DAY), y = dt.getUTCFullYear(), m = dt.getUTCMonth();
-      const e = Math.min(b, Math.round(Date.UTC(y, m + 1, 1) / DAY) - 1);
-      bot += `<div style="left:${x(d)}px;width:${(e - d + 1) * ppd}px">${MESES[m]}</div>`; d = e + 1;
-    }
-  } else {
-    for (let d = a; d <= b;) {
-      const dt = new Date(d * DAY), y = dt.getUTCFullYear(), m = dt.getUTCMonth();
-      const e = Math.min(b, Math.round(Date.UTC(y, m + 1, 1) / DAY) - 1);
-      top += `<div style="left:${x(d)}px;width:${(e - d + 1) * ppd}px">${MESES[m]} ${y}</div>`; d = e + 1;
-    }
-    if (S.zoom === 'semana') for (let d = a; d <= b; d += 7) bot += `<div style="left:${x(d)}px;width:${7 * ppd}px">${isoOf(d).slice(8, 10)}/${isoOf(d).slice(5, 7)}</div>`;
+  const years = () => { for (let y = new Date(a * DAY).getUTCFullYear(); y <= new Date(b * DAY).getUTCFullYear(); y++) { const s0 = Math.max(a, dn(y + '-01-01')), e = Math.min(b, dn(y + '-12-31')); top += `<div style="left:${x(s0)}px;width:${(e - s0 + 1) * ppd}px">${y}</div>`; } };
+  const months = (lbl) => { for (let d = a; d <= b;) { const dt = new Date(d * DAY), y = dt.getUTCFullYear(), m = dt.getUTCMonth(); const e = Math.min(b, Math.round(Date.UTC(y, m + 1, 1) / DAY) - 1); const w = (e - d + 1) * ppd; (lbl ? (top += `<div style="left:${x(d)}px;width:${w}px">${MESES[m]} ${y}</div>`) : (bot += `<div style="left:${x(d)}px;width:${w}px">${w > 26 ? MESES[m] : MESES[m][0]}</div>`)); d = e + 1; } };
+  if (mode === 'trim') {
+    years();
+    for (let d = a; d <= b;) { const dt = new Date(d * DAY), y = dt.getUTCFullYear(), q = Math.floor(dt.getUTCMonth() / 3); const e = Math.min(b, Math.round(Date.UTC(y, q * 3 + 3, 1) / DAY) - 1); bot += `<div style="left:${x(d)}px;width:${(e - d + 1) * ppd}px">T${q + 1}</div>`; d = e + 1; }
+  } else if (mode === 'mes') { years(); months(false); }
+  else {
+    months(true);
+    if (mode === 'semana') for (let d = a; d <= b; d += 7) bot += `<div style="left:${x(d)}px;width:${7 * ppd}px">${ppd * 7 >= 34 ? isoOf(d).slice(8, 10) + '/' + isoOf(d).slice(5, 7) : isoOf(d).slice(8, 10)}</div>`;
     else for (let d = a; d <= b; d++) { const w = dowOf(d); bot += `<div style="left:${x(d)}px;width:${ppd}px;text-align:center;padding:3px 0;${w === 0 || w === 6 ? 'opacity:.55' : ''}">${'DLMXJVS'[w]}${isoOf(d).slice(8, 10)}</div>`; }
   }
   $('#ghead').style.width = W + 'px';
@@ -642,7 +666,7 @@ function renderGantt() {
   // ---- fondo ----
   const sat = S.project.config?.sat;
   const wkStart = (sat ? 6 : 5) * ppd;
-  let bg = S.zoom !== 'mes' ? `background:repeating-linear-gradient(90deg,transparent 0 ${wkStart}px,var(--weekend) ${wkStart}px ${7 * ppd}px)` : '';
+  let bg = (mode === 'dia' || mode === 'semana') ? `background:repeating-linear-gradient(90deg,transparent 0 ${wkStart}px,var(--weekend) ${wkStart}px ${7 * ppd}px)` : '';
   let hol = '';
   Cal.hol.forEach(d => { if (d >= a && d <= b && dowOf(d) !== 0) hol += `<div class="hol" style="left:${x(d)}px;width:${Math.max(ppd, 1.5)}px" title="Feriado ${fmtL(isoOf(d))}"></div>`; });
   const td = dn(todayIso()), cd = dn(S.project.fecha_corte);
@@ -737,7 +761,7 @@ function renderEmpty() {
   $('#view').innerHTML = `<div class="empty"><h2>Sin programas todavía</h2>
     <p class="muted">Importa tu Excel (formato "PROGRAMA 2,0" o tablas tipo Project como FECHAS PF / EXTINCION / ELECTRICO), un XML de MS Project, o parte de cero.</p>
     <button class="btn pri" onclick="openImport()">Importar Excel / XML</button><button class="btn" onclick="newProject()">Programa en blanco</button>
-    <p class="small muted" style="margin-top:20px">Modo: ${Store.remote() ? 'servidor (Google Sheets)' : 'local — configura el servidor en ⚙ para compartir con tu equipo'}</p></div>`;
+    <p class="small muted" style="margin-top:20px">${Store.remote() ? 'Conectado al servidor (Google Sheets).' : 'Modo local. Para trabajar en línea con el equipo, abre el link personal que te envió el administrador.'}</p></div>`;
   $('#status').innerHTML = '';
 }
 
@@ -747,7 +771,7 @@ function renderEmpty() {
 const PERSIST = ['uid', 'nivel', 'nombre', 'piso', 'sub', 'dur', 'avance', 'preds', 'ct', 'cd', 'bls', 'blf', 'bld', 'notas', 'start', 'finish'];
 const clean = t => { const o = {}; PERSIST.forEach(k => { o[k] = t[k]; }); return o; };
 const snapshot = () => JSON.stringify({ tasks: S.tasks.map(clean), project: S.project });
-function snap() { S.undo.push(snapshot()); if (S.undo.length > 60) S.undo.shift(); S.redo = []; }
+function snap() { if (!canEdit()) { toast('Tu acceso es de solo lectura'); throw new Error('RO'); } S.undo.push(snapshot()); if (S.undo.length > 60) S.undo.shift(); S.redo = []; }
 function restore(json) { const o = JSON.parse(json); S.tasks = o.tasks; S.project = o.project; }
 function undo() { if (!S.undo.length) return; S.redo.push(snapshot()); restore(S.undo.pop()); markDirty(); recalc(); }
 function redo() { if (!S.redo.length) return; S.undo.push(snapshot()); restore(S.redo.pop()); markDirty(); recalc(); }
@@ -881,6 +905,7 @@ function setBaseline() {
 
 /* ---------- edición en celda ---------- */
 function startEdit(uid, k) {
+  if (!canEdit()) return;
   const t = S.byUid.get(uid); if (!t) return;
   const col = COLS.find(c => c.k === k); if (!col || !col.f) return;
   if (t._sum && col.f !== 'nombre') return;
@@ -965,7 +990,7 @@ function renderDrawer() {
     <tr><td class="muted">Línea base</td><td>${t.bls ? fmtL(t.bls) + ' → ' + fmtL(t.blf) + (t._var != null ? ` (var. ${t._var > 0 ? '+' : ''}${t._var} d)` : '') : '—'}</td></tr>
     ${t._warn ? `<tr><td class="muted">Advertencia</td><td style="color:var(--warn)">${esc(t._warn)}</td></tr>` : ''}</table>
   </div>
-  <footer><button class="btn" onclick="closeDrawer()">Cerrar</button><button class="btn pri" onclick="applyDrawer(${t.uid})">Aplicar</button></footer>`;
+  <footer><button class="btn" onclick="closeDrawer()">Cerrar</button><button class="btn pri edit-only" onclick="applyDrawer(${t.uid})">Aplicar</button></footer>`;
 }
 function closeDrawer() { $('#drawer').classList.remove('open'); }
 function applyDrawer(uid) {
@@ -993,7 +1018,7 @@ function initGanttEvents() {
     if (!bar) { if (row) clickRow(+row.dataset.u, e); return; }
     const uid = +bar.dataset.u, t = S.byUid.get(uid); if (!t) return;
     if (!S.sel.has(uid) || !(e.ctrlKey || e.metaKey)) { S.sel = new Set([uid]); S.anchor = uid; syncSel(); }
-    if (t._sum) return;
+    if (t._sum || !canEdit()) return;
     const mode = e.target.classList.contains('lk') ? 'link' : e.target.classList.contains('rs') ? 'resize' : 'move';
     if (+t.dur === 0 && mode === 'resize') return;
     drag = { mode, t, bar, x0: e.clientX, left: parseFloat(bar.style.left), width: parseFloat(bar.style.width) || 13, moved: false };
@@ -1001,13 +1026,13 @@ function initGanttEvents() {
   });
   body.addEventListener('pointermove', e => {
     if (!drag) return;
-    const dx = e.clientX - drag.x0; if (Math.abs(dx) > 3) drag.moved = true;
+    const dx = (e.clientX - drag.x0) / uiZ(); if (Math.abs(dx) > 3) drag.moved = true;
     if (drag.mode === 'move') drag.bar.style.left = (drag.left + dx) + 'px';
     else if (drag.mode === 'resize') drag.bar.style.width = Math.max(G.ppd, drag.width + dx) + 'px';
     else {
       const r = body.getBoundingClientRect();
       const x1 = drag.left + drag.width, y1 = parseFloat(drag.bar.style.top) + 7;
-      $('#tmpLink').innerHTML = `<path d="M${x1},${y1}L${e.clientX - r.left},${e.clientY - r.top}" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 3" fill="none"/>`;
+      $('#tmpLink').innerHTML = `<path d="M${x1},${y1}L${(e.clientX - r.left) / uiZ()},${(e.clientY - r.top) / uiZ()}" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 3" fill="none"/>`;
     }
   });
   const end = e => {
@@ -1025,7 +1050,7 @@ function initGanttEvents() {
       return;
     }
     if (!d.moved) return;
-    const days = Math.round((e.clientX - d.x0) / G.ppd);
+    const days = Math.round((e.clientX - d.x0) / uiZ() / G.ppd);
     if (!days) { renderGantt(); return; }
     snap();
     if (d.mode === 'move') { const ns = Cal.ci(dn(d.t.start) + days); d.t.ct = d.t.ct === 'MSO' ? 'MSO' : 'SNET'; d.t.cd = Cal.iso(ns); }
@@ -1175,11 +1200,11 @@ function viewCal() {
     <div class="f2"><div class="f"><label>Fecha de inicio del proyecto</label><input class="inp" type="date" id="cInicio" value="${p.inicio || ''}"></div>
     <div class="f"><label>Fecha de corte (estado)</label><input class="inp" type="date" id="cCorte" value="${p.fecha_corte || ''}"></div></div>
     <label style="display:flex;gap:6px;align-items:center;margin-bottom:12px"><input type="checkbox" id="cSat" ${p.config?.sat ? 'checked' : ''}> Sábado es día laborable</label>
-    <button class="btn pri" onclick="applyProjectCfg()">Aplicar</button></div>
+    <button class="btn pri edit-only" onclick="applyProjectCfg()">Aplicar</button></div>
   <div class="card" style="max-width:640px"><h3>Feriados (calendario compartido)</h3>
     <p class="small muted">Una fecha por línea: <code>2027-04-02 Viernes Santo</code>. Al guardar se recalcula el programa.</p>
     <textarea class="inp" id="cFer" rows="14" style="width:100%;font-family:ui-monospace,monospace">${S.feriados.map(f => f.fecha + ' ' + (f.nombre || '')).join('\n')}</textarea>
-    <div style="margin-top:8px"><button class="btn pri" onclick="saveFeriados()">Guardar feriados</button></div></div>
+    <div style="margin-top:8px"><button class="btn pri edit-only" onclick="saveFeriados()">Guardar feriados</button></div></div>
   <div class="card" style="max-width:640px"><h3>Historial de guardados</h3><div id="histBox" class="small muted">${Store.remote() ? '<button class=btn onclick="loadHist()">Ver historial</button>' : 'Disponible en modo servidor.'}</div></div>`;
 }
 function applyProjectCfg() {
@@ -1206,8 +1231,10 @@ const DEFAULT_FERIADOS = [['2026-01-01', 'Año Nuevo'], ['2026-04-03', 'Viernes 
 const Store = {
   remote() { return !!(S.cfg.apiUrl && S.cfg.token); },
   async call(action, payload = {}) {
-    const r = await fetch(S.cfg.apiUrl, { method: 'POST', body: JSON.stringify(Object.assign({ token: S.cfg.token, action, user: S.cfg.user }, payload)) });
-    const j = await r.json(); if (!j.ok && !j.conflict) throw new Error(j.error || 'Error del servidor'); return j;
+    const r = await fetch(S.cfg.apiUrl, { method: 'POST', body: JSON.stringify(Object.assign({ token: S.cfg.token, action }, payload)) });
+    const j = await r.json();
+    if (!j.ok && !j.conflict) { const e = new Error(j.error || 'Error del servidor'); e.auth = !!j.auth; throw e; }
+    return j;
   },
   async listProjects() { if (this.remote()) return (await this.call('listProjects')).projects; return LS.get('po_projects', []); },
   async getProject(id) {
@@ -1268,7 +1295,7 @@ async function openProject(id) {
   } catch (e) { toast('Error al abrir: ' + e.message, 5000); }
 }
 async function saveProject(silent, force) {
-  if (!S.project) return;
+  if (!S.project || !canEdit()) return;
   const btn = $('#btnSave'); btn.disabled = true; if (!silent) btn.textContent = 'Guardando…';
   try {
     const r = await Store.saveProject(Object.assign({}, S.project), S.tasks, S.project.version ?? null, force);
@@ -1285,6 +1312,7 @@ function conflictModal(msg) {
     [['Cancelar', closeModal], ['Recargar', () => { closeModal(); S.dirty = false; openProject(S.project.id); }], ['Sobrescribir', () => { closeModal(); saveProject(false, true); }, 'dan']]);
 }
 function newProject() {
+  if (!canEdit()) return;
   modal('Nuevo programa', `<div class="f"><label>Nombre</label><input class="inp" id="npName" value="Nuevo programa"></div><div class="f"><label>Fecha de inicio</label><input class="inp" type="date" id="npStart" value="${todayIso()}"></div>`,
     [['Cancelar', closeModal], ['Crear', async () => {
       const p = { id: uidGen(), nombre: $('#npName').value.trim() || 'Nuevo programa', inicio: $('#npStart').value || todayIso(), fecha_corte: todayIso(), version: null, config: {} };
@@ -1316,30 +1344,119 @@ function modal(title, html, buttons) {
   (buttons || [['Cerrar', closeModal]]).forEach(([l, fn, cls]) => { const b = document.createElement('button'); b.className = 'btn ' + (cls || ''); b.textContent = l; b.onclick = fn; f.appendChild(b); });
   $('#modalBg').classList.add('open');
 }
-function closeModal() { $('#modalBg').classList.remove('open'); }
+function closeModal() { $('#modalBg').classList.remove('open'); $('#modal').style.width = ''; }
 function openCfg() {
-  modal('Configuración', `<p class="small muted">Sin URL el programa se guarda solo en este navegador. Con la URL del Apps Script todo queda en tu Google Sheet y lo comparte el equipo.</p>
-    <div class="f"><label>URL de la aplicación web (Apps Script /exec)</label><input class="inp" id="cfgUrl" value="${esc(S.cfg.apiUrl)}" placeholder="https://script.google.com/macros/s/…/exec"></div>
-    <div class="f"><label>Token (API_TOKEN que muestra setup())</label><input class="inp" id="cfgTok" value="${esc(S.cfg.token)}"></div>
-    <div class="f"><label>Tu nombre (queda en el historial)</label><input class="inp" id="cfgUser" value="${esc(S.cfg.user)}"></div>
+  const who = S.me ? `<p>Conectado como <b>${esc(S.me.nombre)}</b> <span class="ubadge ${S.me.rol === 'admin' ? 'admin' : ''}">${esc(S.me.rol)}</span><br><span class="small muted">${esc(S.me.email || 'llave maestra')}</span></p>`
+    : `<p class="small muted">${Store.remote() ? 'Sin validar.' : 'Modo local: el programa se guarda solo en este navegador. Para trabajar en línea abre el link personal que te envió el administrador.'}</p>`;
+  modal('Configuración', `${who}
     <div class="f"><label>Tema</label><select class="inp" id="cfgTheme"><option value="">Automático</option><option value="light">Claro</option><option value="dark">Oscuro</option></select></div>
-    <div id="cfgMsg" class="small"></div>`,
-    [['Probar conexión', async () => {
-      const old = S.cfg; S.cfg = { apiUrl: $('#cfgUrl').value.trim(), token: $('#cfgTok').value.trim(), user: $('#cfgUser').value.trim() };
-      try { await Store.call('ping'); $('#cfgMsg').innerHTML = '<span style="color:var(--ok)">✓ Conexión OK</span>'; } catch (e) { $('#cfgMsg').innerHTML = `<span style="color:var(--crit)">✗ ${esc(e.message)}</span>`; }
+    <details style="margin-top:6px"><summary class="small muted">Conexión avanzada</summary>
+      <div class="f" style="margin-top:8px"><label>URL del servidor (Apps Script /exec)</label><input class="inp" id="cfgUrl" value="${esc(S.cfg.apiUrl || DEFAULT_API)}"></div>
+      <div class="f"><label>Llave de acceso</label><input class="inp" id="cfgTok" type="password" value="${esc(S.cfg.token)}"></div>
+      <div id="cfgMsg" class="small"></div>
+    </details>`,
+    [['Cerrar sesión', () => { if (!confirm('¿Cerrar sesión en este equipo? Necesitarás tu link para volver a entrar.')) return; S.cfg = { apiUrl: '', token: '', user: '' }; LS.set('po_cfg', S.cfg); location.reload(); }, 'dan'],
+    ['Probar', async () => {
+      const old = S.cfg; S.cfg = { apiUrl: $('#cfgUrl').value.trim(), token: $('#cfgTok').value.trim() };
+      try { const j = await Store.call('me'); $('#cfgMsg').innerHTML = `<span style="color:var(--ok)">✓ OK · ${esc(j.user.nombre)} (${esc(j.user.rol)})</span>`; } catch (e) { $('#cfgMsg').innerHTML = `<span style="color:var(--crit)">✗ ${esc(e.message)}</span>`; }
       S.cfg = old;
-    }], ['Guardar', () => {
-      S.cfg = { apiUrl: $('#cfgUrl').value.trim(), token: $('#cfgTok').value.trim(), user: $('#cfgUser').value.trim() }; LS.set('po_cfg', S.cfg);
-      const th = $('#cfgTheme').value; LS.set('po_theme', th); applyTheme(); closeModal(); S.dirty = false; S.project = null; loadProjects();
+    }], ['Guardar', async () => {
+      const th = $('#cfgTheme').value; LS.set('po_theme', th); applyTheme();
+      const nu = { apiUrl: $('#cfgUrl').value.trim(), token: $('#cfgTok').value.trim() };
+      closeModal();
+      if (nu.apiUrl !== (S.cfg.apiUrl || DEFAULT_API) || nu.token !== S.cfg.token) { S.cfg = nu; LS.set('po_cfg', S.cfg); S.dirty = false; S.project = null; await whoAmI(); loadProjects(); }
     }, 'pri']]);
   $('#cfgTheme').value = LS.get('po_theme', '');
+}
+
+/* =====================================================================
+   USUARIOS Y ACCESO (link personal #k=llave)
+   ===================================================================== */
+const DEFAULT_API = 'https://script.google.com/macros/s/AKfycbzRi4gO4PVkEjlEmM7BCtuvxgSUL7jms5yDB9FmIMxdbsWjiGGciCXzFLkrbeL36EVDXA/exec';
+const canEdit = () => S.rol !== 'lector';
+/** Si la URL trae #k=LLAVE (link de invitación), configura este equipo y limpia la URL. */
+function readInvite() {
+  const h = new URLSearchParams(location.hash.slice(1)); const k = h.get('k');
+  if (!k) return false;
+  S.cfg = { apiUrl: h.get('api') || DEFAULT_API, token: k };
+  LS.set('po_cfg', S.cfg);
+  history.replaceState(null, '', location.pathname + location.search);
+  return true;
+}
+async function whoAmI() {
+  S.me = null;
+  if (Store.remote()) {
+    try { S.me = (await Store.call('me')).user; }
+    catch (e) {
+      applyRole('lector');
+      if (e.auth) modal('Acceso no válido', `<p>${esc(e.message)}</p><p class="small muted">Tu link pudo haber sido renovado o desactivado. Pide uno nuevo al administrador del programa.</p>`);
+      else toast('No se pudo validar el acceso: ' + e.message, 5000);
+      return false;
+    }
+  }
+  applyRole(S.me ? S.me.rol : 'admin');
+  return true;
+}
+function applyRole(rol) {
+  S.rol = rol;
+  document.body.classList.toggle('ro', rol === 'lector');
+  document.body.classList.toggle('isadmin', rol === 'admin' && Store.remote());
+  const w = $('#whoami');
+  w.textContent = S.me ? `${S.me.nombre} · ${rol === 'lector' ? 'solo lectura' : rol}` : (Store.remote() ? '' : 'Modo local');
+}
+async function openUsers() {
+  modal('Usuarios', '<p class="muted">Cargando…</p>');
+  $('#modal').style.width = '820px';
+  let users = [];
+  try { users = (await Store.call('listUsers')).users; } catch (e) { $('#modal .body').innerHTML = `<p style="color:var(--crit)">${esc(e.message)}</p>`; return; }
+  const ago = d => d ? new Date(d).toLocaleDateString('es-CL') : '—';
+  $('#modal .body').innerHTML = `
+    <div class="card" style="margin-bottom:12px"><h3>Invitar persona</h3>
+      <div style="display:grid;grid-template-columns:1fr 1.4fr 120px;gap:8px">
+        <input class="inp" id="nuNombre" placeholder="Nombre">
+        <input class="inp" id="nuEmail" placeholder="correo@empresa.cl" type="email">
+        <select class="inp" id="nuRol"><option value="editor">Editor</option><option value="lector">Solo lectura</option><option value="admin">Admin</option></select>
+      </div>
+      <label class="small" style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="nuMail" checked> Enviar invitación por correo</label>
+      <div style="margin-top:8px"><button class="btn pri" id="nuBtn">Crear acceso</button> <span id="nuMsg" class="small"></span></div>
+    </div>
+    <div style="overflow:auto"><table class="t"><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th>Último acceso</th><th></th></tr>
+    ${users.map(u => `<tr data-e="${esc(u.email)}"><td>${esc(u.nombre)}</td><td class="small">${esc(u.email)}</td>
+      <td><select class="inp" data-act="rol">${['lector', 'editor', 'admin'].map(r => `<option ${u.rol === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
+      <td><button class="btn small" data-act="activo">${u.activo ? '<span class="ubadge">activo</span>' : '<span class="ubadge off">desactivado</span>'}</button></td>
+      <td class="small">${ago(u.ultimo_acceso)}</td>
+      <td style="white-space:nowrap"><button class="btn small" data-act="copy" data-link="${esc(u.link)}" title="Copiar link personal">Link</button>
+      <a class="btn small" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent('Hola ' + u.nombre + ', este es tu acceso personal al Programa de Obra: ' + u.link)}">WhatsApp</a>
+      <button class="btn small" data-act="mail" title="Reenviar correo">Correo</button>
+      <button class="btn small dan" data-act="reset" title="Genera una llave nueva; el link anterior deja de funcionar">Renovar</button></td></tr>`).join('')}
+    </table></div>
+    <p class="small muted">Lector: ve el programa, look-ahead y avances. Editor: además edita, importa y guarda. Admin: además gestiona usuarios y elimina programas. "Renovar" invalida el link anterior (úsalo si se filtró o la persona dejó la obra); "desactivado" corta el acceso de inmediato.</p>`;
+  $('#nuBtn').onclick = async () => {
+    const b = $('#nuBtn'); b.disabled = true; $('#nuMsg').textContent = 'Creando…';
+    try {
+      const j = await Store.call('createUser', { nombre: $('#nuNombre').value, email: $('#nuEmail').value, rol: $('#nuRol').value, enviar: $('#nuMail').checked });
+      toast(j.user.enviado ? 'Acceso creado y correo enviado' : 'Acceso creado');
+      try { await navigator.clipboard.writeText(j.user.link); } catch (e) { }
+      openUsers();
+    } catch (e) { $('#nuMsg').innerHTML = `<span style="color:var(--crit)">${esc(e.message)}</span>`; b.disabled = false; }
+  };
+  $('#modal .body').querySelectorAll('[data-act]').forEach(el => {
+    const email = el.closest('tr')?.dataset.e; if (!email) return;
+    const run = async (action, extra, msg) => { try { const j = await Store.call(action, Object.assign({ email }, extra)); toast(msg); return j; } catch (e) { toast('Error: ' + e.message, 5000); } };
+    const act = el.dataset.act;
+    if (act === 'rol') el.onchange = () => run('updateUser', { rol: el.value }, 'Rol actualizado');
+    if (act === 'activo') el.onclick = async () => { const on = el.textContent.includes('desactivado'); if (!on && !confirm('¿Cortar el acceso de ' + email + '?')) return; await run('updateUser', { activo: on }, on ? 'Acceso reactivado' : 'Acceso desactivado'); openUsers(); };
+    if (act === 'copy') el.onclick = () => navigator.clipboard.writeText(el.dataset.link).then(() => toast('Link copiado'), () => prompt('Copia el link:', el.dataset.link));
+    if (act === 'mail') el.onclick = () => run('sendInvite', {}, 'Invitación reenviada');
+    if (act === 'reset') el.onclick = async () => { if (!confirm('¿Generar una llave nueva para ' + email + '? Su link actual dejará de funcionar.')) return; const j = await run('resetToken', { enviar: confirm('¿Enviarle el nuevo link por correo?') }, 'Llave renovada'); if (j) openUsers(); };
+  });
 }
 function applyTheme() { const th = LS.get('po_theme', ''); if (th) document.documentElement.dataset.theme = th; else delete document.documentElement.dataset.theme; }
 
 /* =====================================================================
    IMPORTACIÓN
    ===================================================================== */
-function openImport() { $('#fileIn').value = ''; $('#fileIn').click(); }
+function openImport() { if (!canEdit()) return; $('#fileIn').value = ''; $('#fileIn').click(); }
 async function onFile(file) {
   const name = file.name.toLowerCase();
   try {
@@ -1609,6 +1726,7 @@ function exportMSPDI() {
 function bind() {
   $('#btnSave').onclick = () => saveProject();
   $('#btnCfg').onclick = openCfg;
+  $('#btnUsers').onclick = openUsers;
   $('#btnImport').onclick = openImport;
   $('#btnExport').onclick = exportMenu;
   $('#btnNewProj').onclick = newProject;
@@ -1621,11 +1739,22 @@ function bind() {
   $('#bUp').onclick = () => moveSel(-1); $('#bDown').onclick = () => moveSel(1);
   $('#bLink').onclick = linkSel; $('#bUnlink').onclick = unlinkSel; $('#bInfo').onclick = openDrawer;
   $$('[data-pct]').forEach(b => b.onclick = () => setPct(+b.dataset.pct));
-  const zs = ['dia', 'semana', 'mes'];
-  const setZoom = z => { S.zoom = z; LS.set('po_zoom', z); $('#zoomSel').value = z; const c = $('#gwrap'); const mid = (c.scrollLeft + c.clientWidth / 2) / G.ppd + G.t0; renderAll(); c.scrollLeft = (mid - G.t0) * G.ppd - c.clientWidth / 2; };
+  const zs = ['dia', 'semana', 'mes', 'trim'];
+  const setZoom = (z, ppd) => {
+    const c = $('#gwrap'); const mid = (c.scrollLeft + c.clientWidth / 2) / G.ppd + G.t0;
+    S.zoom = z; if (ppd) S.ppdC = ppd; LS.set('po_zoom', z); LS.set('po_ppdc', S.ppdC || 8); $('#zoomSel').value = z;
+    renderAll(); c.scrollLeft = z === 'fit' ? 0 : (mid - G.t0) * G.ppd - c.clientWidth / 2;
+  };
+  window.setZoom = setZoom;
+  // Ctrl + rueda: sobre el Gantt cambia la escala de tiempo; sobre la tabla/vistas cambia el tamaño
+  $('#gwrap').addEventListener('wheel', e => { if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault(); setZoom('custom', clamp(G.ppd * (e.deltaY < 0 ? 1.2 : 1 / 1.2), 0.25, 40)); }, { passive: false });
+  ['#lwrap', '#view'].forEach(sel => $(sel).addEventListener('wheel', e => { if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault(); setUi(uiZ() + (e.deltaY < 0 ? 0.1 : -0.1)); }, { passive: false }));
+  $('#bUiIn').onclick = () => setUi(uiZ() + 0.1); $('#bUiOut').onclick = () => setUi(uiZ() - 0.1); $('#bUiReset').onclick = () => setUi(1);
+  window.addEventListener('resize', () => { if (S.zoom === 'fit' && S.view === 'gantt' && S.project) renderGantt(); });
   $('#zoomSel').value = S.zoom; $('#zoomSel').onchange = e => setZoom(e.target.value);
-  $('#bZoomIn').onclick = () => setZoom(zs[Math.max(0, zs.indexOf(S.zoom) - 1)]);
-  $('#bZoomOut').onclick = () => setZoom(zs[Math.min(2, zs.indexOf(S.zoom) + 1)]);
+  // +/− pasan al nivel fijo más cercano en esa dirección
+  $('#bZoomIn').onclick = () => { const nx = zs.slice().reverse().find(z => ZOOM[z] > G.ppd * 1.05); setZoom(nx || 'dia'); };
+  $('#bZoomOut').onclick = () => { const nx = zs.find(z => ZOOM[z] < G.ppd / 1.05); setZoom(nx || 'trim'); };
   $('#bToday').onclick = scrollToToday;
   $('#bCrit').onclick = () => { S.showCrit = !S.showCrit; renderAll(); };
   $('#bBase').onclick = () => { if (!S.tasks.some(t => t.bls)) { if (confirm('No hay línea base. ¿Guardar la línea base ahora con el programa actual?')) setBaseline(); return; } S.showBase = !S.showBase; LS.set('po_base', S.showBase); renderAll(); };
@@ -1658,7 +1787,11 @@ function bind() {
 }
 applyTheme(); bind(); initGridEvents(); initGanttEvents();
 Cal.build(DEFAULT_FERIADOS, false);
-loadProjects();
+const swallowRO = e => { const er = e.error || e.reason; if (er && er.message === 'RO') e.preventDefault(); };
+window.addEventListener('error', swallowRO); window.addEventListener('unhandledrejection', swallowRO);
+window.addEventListener('hashchange', async () => { if (readInvite()) { S.dirty = false; S.project = null; await whoAmI(); loadProjects(); } });
+setUi(S.ui);
+(async () => { readInvite(); await whoAmI(); loadProjects(); })();
 </script>
 </body>
 </html>
