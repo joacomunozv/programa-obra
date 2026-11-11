@@ -388,6 +388,18 @@ const predsText = ps => (ps || []).map(p => p.u + (p.t !== 'FS' ? LT_ES[p.t] : '
    MOTOR DE PROGRAMACIÓN (CPM)
    Tarea hoja: ES (índice hábil de inicio), EF = ES + dur (exclusivo).
    ===================================================================== */
+/** Extrae el piso desde un texto: "Piso 12" → 12, "Subterráneo 8"/"Sub 8"/"S-8" → -8. null si no hay. */
+function pisoFromName(s) {
+  const x = String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  let m = x.match(/\b(?:subterraneo|subt\.?|sub|s)\s*-?\s*(\d+)\b/); if (m && !/\bpiso/.test(x.slice(0, m.index))) return -Math.abs(+m[1]);
+  m = x.match(/\bpiso\s*(-?\d+)\b/); if (m) return +m[1];
+  m = x.match(/\bnivel\s*(-?\d+)\b/); if (m) return +m[1];
+  return null;
+}
+const pisoCmp = (a, b) => { const na = a === '' ? NaN : +a, nb = b === '' ? NaN : +b; if (!isNaN(na) && !isNaN(nb)) return na - nb; if (!isNaN(na)) return -1; if (!isNaN(nb)) return 1; return String(a).localeCompare(String(b), 'es'); };
+/** Grupo para look-ahead por piso: "Piso X" o, si no hay piso, el nombre del grupo padre. */
+const pisoGroup = t => t._piso !== '' ? 'Piso ' + t._piso : (t._par ? t._par.nombre : 'Sin piso');
+
 function schedule() {
   const T = S.tasks;
   Cal.build(S.feriados, S.project?.config?.sat);
@@ -406,6 +418,12 @@ function schedule() {
     t._sum = t._ch.length > 0;
     cnt.length = t.nivel; cnt[t.nivel - 1] = (cnt[t.nivel - 1] || 0) + 1;
     t._wbs = cnt.slice(0, t.nivel).map(x => x || 1).join('.');
+  });
+  // Piso efectivo: el de la tarea, o el que se deduce del grupo ("Subterraneo 8" → -8, "Piso 12" → 12)
+  T.forEach(t => {
+    if (t.piso !== '' && t.piso != null) { t._piso = String(t.piso).trim(); return; }
+    let v = null, p = t._par; while (p && v == null) { v = pisoFromName(p.nombre); p = p._par; }
+    t._piso = v == null ? '' : String(v);
   });
   const byUid = new Map(T.map(t => [t.uid, t])); S.byUid = byUid;
   const leaves = T.filter(t => !t._sum && t.dur != null && t.dur !== '');
@@ -523,7 +541,7 @@ function computeVisible() {
   const match = t => {
     if (t._sum) return false;
     if (f.text && !(String(t.nombre).toLowerCase().includes(f.text) || String(t.uid) === f.text || String(t.notas || '').toLowerCase().includes(f.text))) return false;
-    if (f.piso && String(t.piso) !== f.piso) return false;
+    if (f.piso && t._piso !== f.piso) return false;
     if (f.sub && (t.sub || '') !== f.sub) return false;
     switch (f.est) {
       case 'crit': return t._crit;
@@ -588,7 +606,7 @@ function cellHtml(t, c) {
       const car = t._sum ? `<span class="caret" data-tg="${t.uid}">${S.collapsed.has(t.uid) && !S.filterActive ? '▸' : '▾'}</span>` : '<span class="caret"></span>';
       return `<span style="padding-left:${pad}px">${car}${t.dur === 0 && !t._sum ? '◆ ' : ''}${esc(t.nombre)}</span>`;
     }
-    case 'piso': return t._sum ? '' : esc(t.piso);
+    case 'piso': return t._sum ? '' : (t.piso !== '' && t.piso != null ? esc(t.piso) : (t._piso ? `<span class="muted" title="Deducido del grupo">${esc(t._piso)}</span>` : ''));
     case 'sub': return t._sum ? '' : esc(t.sub);
     case 'dur': return t.dur == null || t.dur === '' ? '<span class="muted">—</span>' : t.dur + ' d';
     case 'start': return fmt(t.start);
@@ -764,7 +782,7 @@ function renderGantt() {
    RENDER GENERAL / BARRA DE ESTADO
    ===================================================================== */
 function refreshFilters() {
-  const pisos = [...new Set(S.tasks.filter(t => !t._sum && t.piso !== '' && t.piso != null).map(t => String(t.piso)))].sort((a, b) => (+a - +b) || a.localeCompare(b));
+  const pisos = [...new Set(S.tasks.filter(t => !t._sum && t._piso !== '').map(t => t._piso))].sort(pisoCmp);
   const subs = [...new Set(S.tasks.filter(t => !t._sum && t.sub).map(t => t.sub))].sort();
   const fp = $('#fPiso'), fs = $('#fSub'), vp = fp.value, vs = fs.value;
   fp.innerHTML = '<option value="">Todos los pisos</option>' + pisos.map(p => `<option ${p === vp ? 'selected' : ''}>${esc(p)}</option>`).join('');
@@ -793,7 +811,7 @@ function renderSaveState() {
   const el = $('#saveState');
   const mode = Store.remote() ? 'Servidor' : 'Local (este navegador)';
   el.className = S.dirty ? 'dirty' : '';
-  el.textContent = S.dirty ? '● Cambios sin guardar' : (S.project ? `✓ Guardado · ${mode}${S.project.version ? ' · v' + S.project.version : ''}` : mode);
+  el.textContent = S.saving ? '⟳ Guardando…' : S.dirty ? (Store.remote() && LS.get('po_autosave', true) ? '● Guardando en unos segundos…' : '● Cambios sin guardar') : (S.project ? `✓ Guardado · ${mode}${S.project.version ? ' · v' + S.project.version : ''}` : mode);
 }
 function renderEmpty() {
   $('#split').style.display = 'none'; $('#view').style.display = 'block';
@@ -811,11 +829,115 @@ const PERSIST = ['uid', 'nivel', 'nombre', 'piso', 'sub', 'dur', 'avance', 'pred
 const clean = t => { const o = {}; PERSIST.forEach(k => { o[k] = t[k]; }); return o; };
 const snapshot = () => JSON.stringify({ tasks: S.tasks.map(clean), project: S.project });
 function snap(keepSort) { if (!keepSort) S.sortK = null; if (!canEdit()) { toast('Tu acceso es de solo lectura'); throw new Error('RO'); } S.undo.push(snapshot()); if (S.undo.length > 60) S.undo.shift(); S.redo = []; }
-function restore(json) { const o = JSON.parse(json); S.tasks = o.tasks; S.project = o.project; }
+function restore(json) { const o = JSON.parse(json); const v = S.project?.version; S.tasks = o.tasks; S.project = o.project; S.project.version = v; }
 function undo() { if (!S.undo.length) return; S.sortK = null; S.redo.push(snapshot()); restore(S.undo.pop()); markDirty(); recalc(); }
 function redo() { if (!S.redo.length) return; S.sortK = null; S.undo.push(snapshot()); restore(S.redo.pop()); markDirty(); recalc(); }
-function markDirty() { S.dirty = true; renderSaveState(); if (!Store.remote()) autosaveLocal(); }
+function markDirty() {
+  S.dirty = true; S.editSeq = (S.editSeq || 0) + 1; renderSaveState();
+  if (!Store.remote()) autosaveLocal(); else if (LS.get('po_autosave', true)) autosaveRemote();
+}
 let _asT; function autosaveLocal() { clearTimeout(_asT); _asT = setTimeout(() => saveProject(true), 800); }
+/** Guardado automático en servidor: 4 s después del último cambio, sin interrumpir una celda en edición. */
+let _arT; function autosaveRemote() {
+  clearTimeout(_arT);
+  _arT = setTimeout(() => { if (isTyping() || S.saving) return autosaveRemote(); if (S.dirty) saveProject(true); }, 4000);
+}
+const isTyping = () => { const a = document.activeElement; return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && !!a.closest('#lbody,#drawer,#view,#modal'); };
+
+/* =====================================================================
+   TRABAJO SIMULTÁNEO: fusión de cambios (3 vías) y actualización en vivo
+   base   = cómo estaba el programa en el servidor cuando lo cargué / guardé
+   mío    = lo que tengo en pantalla
+   suyo   = lo que hay ahora en el servidor (guardado por otra persona)
+   Regla por campo: si solo cambió uno, gana ese cambio; si ambos cambiaron
+   el mismo campo de la misma tarea, gana el mío y se informa.
+   ===================================================================== */
+const MF = ['nivel', 'nombre', 'piso', 'sub', 'dur', 'avance', 'preds', 'ct', 'cd', 'bls', 'blf', 'bld', 'notas'];
+const PF = ['nombre', 'inicio', 'fecha_corte', 'config'];
+const fv = (t, f) => f === 'preds' ? JSON.stringify((t.preds || []).map(p => [p.u, p.t, p.l || 0])) : f === 'config' ? JSON.stringify(t.config || {}) : String(t[f] ?? '');
+const cloneT = t => { const o = clean(t); o.preds = (t.preds || []).map(p => Object.assign({}, p)); return o; };
+function setBase(tasks, project) {
+  S.base = new Map(tasks.map(t => [t.uid, cloneT(t)]));
+  S.baseProj = project ? JSON.parse(JSON.stringify(PF.reduce((o, k) => (o[k] = project[k], o), {}))) : S.baseProj;
+}
+function merge3(base, mine, theirs) {
+  const conflicts = []; let applied = 0;
+  const Th = new Map(theirs.map(t => [t.uid, t]));
+  // 1) IDs nuevos míos que chocan con IDs nuevos de la otra persona → renumerar los míos
+  let maxU = Math.max(0, ...mine.map(t => +t.uid), ...theirs.map(t => +t.uid));
+  const remap = new Map();
+  mine.forEach(t => { if (!base.has(t.uid) && Th.has(t.uid)) remap.set(t.uid, ++maxU); });
+  if (remap.size) mine.forEach(t => { if (remap.has(t.uid)) t.uid = remap.get(t.uid); t.preds = (t.preds || []).map(p => remap.has(p.u) ? Object.assign({}, p, { u: remap.get(p.u) }) : p); });
+  const M = new Map(mine.map(t => [t.uid, t]));
+  // en grupos (pisos) la duración y el % avance son calculados: no se comparan
+  const fieldsOf = t => t && t._sum ? MF.filter(f => f !== 'dur' && f !== 'avance') : MF;
+  const changed = (a, b) => fieldsOf(a).some(f => fv(a, f) !== fv(b, f));
+  const keep = new Set();
+  // 2) tareas presentes en "mío"
+  mine.forEach(m => {
+    const b = base.get(m.uid), th = Th.get(m.uid);
+    if (th) {
+      fieldsOf(m).forEach(f => {
+        const mc = b ? fv(m, f) !== fv(b, f) : true, tc = b ? fv(th, f) !== fv(b, f) : false;
+        if (tc && !mc) { m[f] = f === 'preds' ? th.preds.map(p => Object.assign({}, p)) : th[f]; applied++; }
+        else if (tc && mc && fv(m, f) !== fv(th, f)) conflicts.push(`ID ${m.uid} · ${f}: se mantuvo tu valor`);
+      });
+      keep.add(m.uid);
+    } else if (!b) keep.add(m.uid);                           // nueva mía
+    else if (changed(m, b)) { keep.add(m.uid); conflicts.push(`ID ${m.uid}: la otra persona la eliminó, pero tú la editaste → se mantiene`); }
+    else applied++;                                          // la eliminó la otra persona y yo no la toqué
+  });
+  // 3) tareas que solo están en "suyo"
+  const extra = [];
+  theirs.forEach((th, i) => {
+    if (M.has(th.uid)) return;
+    const b = base.get(th.uid);
+    if (!b) { extra.push(i); applied++; }                    // nueva de la otra persona
+    else if (changed(th, b)) { extra.push(i); conflicts.push(`ID ${th.uid}: tú la eliminaste, pero la otra persona la editó → se mantiene`); }
+  });
+  // 4) orden: el mío, insertando las nuevas de la otra persona tras su tarea anterior
+  let out = mine.filter(t => keep.has(t.uid));
+  extra.forEach(i => {
+    const t = Object.assign(cloneT(theirs[i]), {});
+    let j = i - 1, pos = -1;
+    while (j >= 0 && pos < 0) { pos = out.findIndex(x => x.uid === theirs[j].uid); j--; }
+    out.splice(pos + 1, 0, t);
+  });
+  const ids = new Set(out.map(t => t.uid));
+  out.forEach(t => { t.preds = (t.preds || []).filter(p => ids.has(p.u)); });
+  return { tasks: out, conflicts, applied, renumbered: remap.size };
+}
+/** Trae lo último del servidor y lo combina con lo que tengo en pantalla. */
+async function pullAndMerge(reason) {
+  const d = await Store.getProject(S.project.id);
+  const res = merge3(S.base || new Map(), S.tasks, d.tasks);
+  // datos del proyecto (nombre, inicio, corte, calendario)
+  PF.forEach(k => { const mc = fv(S.project, k) !== fv(S.baseProj || {}, k), tc = fv(d.project, k) !== fv(S.baseProj || {}, k); if (tc && !mc) S.project[k] = d.project[k]; });
+  S.tasks = res.tasks; S.project.version = d.project.version; S.feriados = d.feriados || S.feriados;
+  if (res.applied) { S.undo = []; S.redo = []; }
+  setBase(d.tasks, d.project);
+  const ed = $('#lbody input'); recalc();
+  if (res.conflicts.length) modal('Cambios simultáneos', `<p>Se combinaron tus cambios con los de ${esc(d.project.actualizado_por || 'otra persona')}. En estos casos ambos editaron lo mismo:</p><div class="small" style="max-height:220px;overflow:auto">${res.conflicts.map(esc).join('<br>')}</div>`);
+  else if (res.applied) toast(`Se incorporaron ${res.applied} cambio(s) de ${d.project.actualizado_por || 'otra persona'}${reason ? ' · ' + reason : ''}`, 3500);
+  return res;
+}
+/** Revisa cada 20 s si alguien más guardó; si es así, actualiza sin perder lo que estoy editando. */
+async function pollRemote() {
+  if (!Store.remote() || !S.project || S.saving || document.hidden || isTyping() || $('#modalBg').classList.contains('open')) return;
+  try {
+    const j = await Store.call('getVersion', { id: S.project.id });
+    if (!(j.version > (S.project.version || 0))) return;
+    if (!S.dirty) {
+      const d = await Store.getProject(S.project.id);
+      S.project = Object.assign(d.project, { config: d.project.config || {} }); S.tasks = d.tasks; S.feriados = d.feriados || S.feriados;
+      S.undo = []; S.redo = [];
+      setBase(d.tasks, d.project); recalc();
+      toast('Programa actualizado con los cambios de ' + (d.project.actualizado_por || 'otra persona'), 3500);
+    } else await pullAndMerge();
+  } catch (e) { /* sin conexión: se reintenta en el próximo ciclo */ }
+}
+setInterval(pollRemote, 20000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pollRemote(); });
 
 /* =====================================================================
    EDICIÓN
@@ -929,7 +1051,7 @@ const SORT_KEYS = {
   finish: { l: 'Fin', v: t => t.finish ? dn(t.finish) : null },
   nombre: { l: 'Nombre (alfanumérico)', v: t => t.nombre, nat: 1 },
   id: { l: 'ID', v: t => +t.uid },
-  piso: { l: 'Piso', v: t => t._sum ? null : t.piso, nat: 1 },
+  piso: { l: 'Piso', v: t => t._sum || t._piso === '' ? null : +t._piso },
   sub: { l: 'Subcontrato', v: t => t._sum ? null : (t.sub || null), nat: 1 },
   dur: { l: 'Duración', v: t => t.dur ?? null },
   avance: { l: '% Avance', v: t => +t.avance || 0 },
@@ -1114,8 +1236,8 @@ function renderDrawer() {
     <div class="f2"><div class="f"><label>Restricción</label><select class="inp" id="dCt">${Object.entries(CT).map(([k, v]) => `<option value="${k}" ${t.ct === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
       <div class="f"><label>Fecha restricción</label><input class="inp" id="dCd" type="date" value="${t.cd || ''}"></div></div>
     <div class="f"><label>Predecesoras (ej: 12;15CC+2d;20FF-1)</label><input class="inp" id="dPred" value="${esc(predsText(t.preds))}"></div>
-    <div class="small muted" style="margin:-4px 0 10px">${(t.preds || []).map(p => { const q = S.byUid.get(p.u); return `${p.u} ${LT_ES[p.t]}${p.l ? (p.l > 0 ? '+' : '') + p.l + 'd' : ''} · ${esc(q?.nombre || '¿?')}${q?.piso !== undefined && q?.piso !== '' ? ' (P' + esc(q.piso) + ')' : ''}`; }).join('<br>') || 'Sin predecesoras'}</div>
-    <div class="f"><label>Sucesoras</label><div class="small">${succ.map(s => `${s.uid} · ${esc(s.nombre)}${s.piso !== '' && s.piso != null ? ' (P' + esc(s.piso) + ')' : ''}`).join('<br>') || '<span class="muted">—</span>'}</div></div>
+    <div class="small muted" style="margin:-4px 0 10px">${(t.preds || []).map(p => { const q = S.byUid.get(p.u); return `${p.u} ${LT_ES[p.t]}${p.l ? (p.l > 0 ? '+' : '') + p.l + 'd' : ''} · ${esc(q?.nombre || '¿?')}${q && q._piso ? ' (P' + esc(q._piso) + ')' : ''}`; }).join('<br>') || 'Sin predecesoras'}</div>
+    <div class="f"><label>Sucesoras</label><div class="small">${succ.map(s => `${s.uid} · ${esc(s.nombre)}${s._piso ? ' (P' + esc(s._piso) + ')' : ''}`).join('<br>') || '<span class="muted">—</span>'}</div></div>
     <div class="f"><label>Notas</label><textarea class="inp" id="dNotas" rows="3">${esc(t.notas || '')}</textarea></div>`}
     <table class="t small"><tr><td class="muted">Comienzo / Fin</td><td>${fmtL(t.start)} → ${fmtL(t.finish)}</td></tr>
     <tr><td class="muted">Comienzo / Fin tardío</td><td>${t._LS != null && !ro ? fmtL(Cal.iso(t._LS)) + ' → ' + fmtL(Cal.iso(t._LF - 1)) : '—'}</td></tr>
@@ -1239,15 +1361,16 @@ function lookData() {
   const weeks = +LS.get('po_lw_weeks', 3), group = LS.get('po_lw_group', 'sub');
   const C = dn(S.project.fecha_corte || todayIso()); const mon = C - (dowOf(C) + 6) % 7; const end = mon + weeks * 7 - 1;
   const rows = leavesVisible().filter(t => (+t.avance || 0) < 1 && dn(t.start) <= end && (dn(t.finish) >= mon || t._late));
-  const key = t => group === 'piso' ? 'Piso ' + (t.piso ?? '') : (t.sub || 'Sin subcontrato');
+  const key = t => group === 'piso' ? pisoGroup(t) : (t.sub || 'Sin subcontrato');
   const groups = {};
-  rows.sort((a, b) => a.start.localeCompare(b.start) || (+a.piso - +b.piso)).forEach(t => { (groups[key(t)] = groups[key(t)] || []).push(t); });
+  rows.sort((a, b) => a.start.localeCompare(b.start) || pisoCmp(a._piso, b._piso)).forEach(t => { (groups[key(t)] = groups[key(t)] || []).push(t); });
   return { weeks, group, mon, end, groups, rows };
 }
 function viewLook() {
   const { weeks, group, mon, end, groups, rows } = lookData();
   const days = []; for (let d = mon; d <= end; d++) if (Cal.isWork(d)) days.push(d);
-  const keys = Object.keys(groups).sort((a, b) => group === 'piso' ? (+a.slice(5) - +b.slice(5)) : a.localeCompare(b));
+  const gk = k => k.startsWith('Piso ') ? k.slice(5) : k;
+  const keys = Object.keys(groups).sort((a, b) => group === 'piso' ? pisoCmp(gk(a), gk(b)) : a.localeCompare(b));
   let h = `<div class="card noprint" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
     <b>Look-ahead</b><span class="muted">desde ${fmtL(isoOf(mon))} al ${fmtL(isoOf(end))}</span>
     <select class="inp" onchange="LS.set('po_lw_weeks',+this.value);renderView()">${[2, 3, 4, 6].map(w => `<option value="${w}" ${w === weeks ? 'selected' : ''}>${w} semanas</option>`).join('')}</select>
@@ -1259,7 +1382,7 @@ function viewLook() {
     h += `<tr class="g"><td colspan="${8 + days.length}">${esc(k)} (${groups[k].length})</td></tr>`;
     groups[k].forEach(t => {
       const s = dn(t.start), e = dn(t.finish);
-      h += `<tr><td>${t.uid}</td><td>${esc(t.piso)}</td><td>${t._crit ? '<b style="color:var(--crit)">● </b>' : ''}${esc(t.nombre)}${group === 'piso' && t.sub ? ' <span class="muted">· ' + esc(t.sub) + '</span>' : ''}</td><td>${fmt(t.start)}</td><td>${fmt(t.finish)}</td><td>${pct(t.avance)}</td><td>${pct(t._prog)}</td>
+      h += `<tr><td>${t.uid}</td><td>${esc(t._piso)}</td><td>${t._crit ? '<b style="color:var(--crit)">● </b>' : ''}${esc(t.nombre)}${group === 'piso' && t.sub ? ' <span class="muted">· ' + esc(t.sub) + '</span>' : ''}</td><td>${fmt(t.start)}</td><td>${fmt(t.finish)}</td><td>${pct(t.avance)}</td><td>${pct(t._prog)}</td>
       <td>${cellHtml(t, { k: 'estado' })}</td>${days.map(d => `<td style="padding:4px 1px"><div style="height:12px;${d >= s && d <= e ? `background:${t._crit ? 'var(--crit)' : 'var(--bar)'};` : ''}"></div></td>`).join('')}</tr>`;
     });
   });
@@ -1269,7 +1392,7 @@ function copyLookText() {
   const { weeks, mon, end, groups } = lookData();
   let s = `*${S.project.nombre} — Look-ahead ${weeks} semanas*\n${fmtL(isoOf(mon))} al ${fmtL(isoOf(end))}\n`;
   Object.keys(groups).sort().forEach(k => {
-    s += `\n*${k}*\n` + groups[k].map(t => `• ${t.piso !== '' && t.piso != null ? 'P' + t.piso + ' ' : ''}${t.nombre} (${fmt(t.start)} → ${fmt(t.finish)})${t._late ? ' ⚠️ ' + t._est : ''}`).join('\n') + '\n';
+    s += `\n*${k}*\n` + groups[k].map(t => `• ${t._piso !== '' ? 'P' + t._piso + ' ' : ''}${t.nombre} (${fmt(t.start)} → ${fmt(t.finish)})${t._late ? ' ⚠️ ' + t._est : ''}`).join('\n') + '\n';
   });
   navigator.clipboard.writeText(s).then(() => toast('Copiado al portapapeles'), () => { prompt('Copia el texto:', s); });
 }
@@ -1326,7 +1449,7 @@ function viewAvance() {
     <div class="kpi"><div class="v">${s.crit}</div><div class="l">Tareas críticas</div></div></div>
   <div class="card"><h3>Curva S</h3><span class="lgd"><i style="background:var(--bar)"></i>Programa actual</span>${fB ? '<span class="lgd"><i style="background:var(--base)"></i>Línea base</span>' : '<span class="lgd muted">(guarda una línea base para comparar)</span>'}<span class="lgd"><i style="background:var(--accent);width:8px;border-radius:50%"></i>Avance real al corte</span>${svg}</div>
   <div class="card"><h3>Atrasadas al corte (${s.late})</h3><table class="t"><tr><th>ID</th><th>Piso</th><th>Actividad</th><th>Subcontrato</th><th>Inicio</th><th>Fin</th><th>% Real</th><th>% Prog.</th><th>Estado</th></tr>
-  ${lateRows.map(t => `<tr><td>${t.uid}</td><td>${esc(t.piso)}</td><td>${esc(t.nombre)}</td><td>${esc(t.sub)}</td><td>${fmt(t.start)}</td><td>${fmt(t.finish)}</td><td>${pct(t.avance)}</td><td>${pct(t._prog)}</td><td>${cellHtml(t, { k: 'estado' })}</td></tr>`).join('')}</table></div>`;
+  ${lateRows.map(t => `<tr><td>${t.uid}</td><td>${esc(t._piso)}</td><td>${esc(t.nombre)}</td><td>${esc(t.sub)}</td><td>${fmt(t.start)}</td><td>${fmt(t.finish)}</td><td>${pct(t.avance)}</td><td>${pct(t._prog)}</td><td>${cellHtml(t, { k: 'estado' })}</td></tr>`).join('')}</table></div>`;
 }
 function viewCal() {
   const p = S.project;
@@ -1426,21 +1549,36 @@ async function openProject(id) {
     const d = await Store.getProject(id);
     S.project = d.project; S.project.config = S.project.config || {}; S.tasks = d.tasks; S.feriados = d.feriados || [];
     S.undo = []; S.redo = []; S.sel.clear(); S.collapsed = new Set(LS.get('po_col_' + id, []));
-    S.dirty = false; LS.set('po_last', id); recalc(); fillProjSel(); setTimeout(scrollToToday, 50);
+    S.dirty = false; setBase(S.tasks, S.project); LS.set('po_last', id); recalc(); fillProjSel(); setTimeout(scrollToToday, 50);
   } catch (e) { toast('Error al abrir: ' + e.message, 5000); }
 }
 async function saveProject(silent, force) {
   if (!S.project || !canEdit()) return;
+  if (S.saving) { S.saveAgain = true; return; }
+  S.saving = true; renderSaveState();
   const btn = $('#btnSave'); btn.disabled = true; if (!silent) btn.textContent = 'Guardando…';
   try {
-    const r = await Store.saveProject(Object.assign({}, S.project), S.tasks, S.project.version ?? null, force);
-    if (r.conflict) { conflictModal(r.error); return; }
-    S.project.version = r.version; S.dirty = false;
+    let r, tries = 0, sent, seq;
+    do {
+      seq = S.editSeq || 0; sent = S.tasks.map(cloneT);
+      r = await Store.saveProject(Object.assign({}, S.project), S.tasks, S.project.version ?? null, force);
+      if (r.conflict) {
+        if (++tries > 3) { conflictModal(r.error); return; }
+        await pullAndMerge('combinando antes de guardar');   // trae lo de la otra persona y reintenta
+      }
+    } while (r.conflict);
+    S.project.version = r.version;
+    if (Store.remote()) S.project.actualizado_por = S.me?.nombre || S.project.actualizado_por;
+    setBase(sent, S.project);
+    S.dirty = (S.editSeq || 0) !== seq;                      // si seguiste editando mientras guardaba, queda pendiente
     const i = S.projects.findIndex(p => p.id === S.project.id);
     if (i < 0) S.projects.push(Object.assign({}, S.project)); else S.projects[i] = Object.assign({}, S.projects[i], S.project);
-    fillProjSel(); renderSaveState(); if (!silent) toast('Guardado');
+    fillProjSel(); if (!silent) toast('Guardado');
   } catch (e) { toast('Error al guardar: ' + e.message, 5000); }
-  finally { btn.disabled = false; btn.textContent = 'Guardar'; }
+  finally {
+    S.saving = false; btn.disabled = false; btn.textContent = 'Guardar'; renderSaveState();
+    if (S.saveAgain || (S.dirty && Store.remote() && LS.get('po_autosave', true))) { S.saveAgain = false; if (S.dirty) autosaveRemote(); }
+  }
 }
 function conflictModal(msg) {
   modal('Conflicto de versiones', `<p>${esc(msg)}</p><p class="small muted">Otra persona guardó cambios mientras editabas. Puedes recargar (pierdes tus cambios) o sobrescribir (se pierden los de la otra persona). Recomendado: exportar tu versión a Excel antes.</p>`,
@@ -1458,7 +1596,7 @@ async function createProjectWith(p, tasks, feriados) {
   S.dirty = false;
   S.project = p; S.tasks = tasks; if (feriados) S.feriados = feriados; else if (!S.feriados.length) S.feriados = LS.get('po_feriados', DEFAULT_FERIADOS);
   S.undo = []; S.redo = []; S.sel.clear(); S.collapsed.clear();
-  schedule();
+  schedule(); setBase([], p);
   await saveProject(true);
   S.projects = await Store.listProjects(); LS.set('po_last', p.id); fillProjSel(); recalc(); setTimeout(scrollToToday, 50);
 }
@@ -1484,6 +1622,7 @@ function openCfg() {
   const who = S.me ? `<p>Conectado como <b>${esc(S.me.nombre)}</b> <span class="ubadge ${S.me.rol === 'admin' ? 'admin' : ''}">${esc(S.me.rol)}</span><br><span class="small muted">${esc(S.me.email || 'llave maestra')}</span></p>`
     : `<p class="small muted">${Store.remote() ? 'Sin validar.' : 'Modo local: el programa se guarda solo en este navegador. Para trabajar en línea abre el link personal que te envió el administrador.'}</p>`;
   modal('Configuración', `${who}
+    <label class="small" style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><input type="checkbox" id="cfgAuto" ${LS.get('po_autosave', true) ? 'checked' : ''}> Guardar automáticamente (4 s después de cada cambio) y combinar con los cambios de otros</label>
     <div class="f"><label>Tema</label><select class="inp" id="cfgTheme"><option value="">Automático</option><option value="light">Claro</option><option value="dark">Oscuro</option></select></div>
     <details style="margin-top:6px"><summary class="small muted">Conexión avanzada</summary>
       <div class="f" style="margin-top:8px"><label>URL del servidor (Apps Script /exec)</label><input class="inp" id="cfgUrl" value="${esc(S.cfg.apiUrl || DEFAULT_API)}"></div>
@@ -1496,7 +1635,7 @@ function openCfg() {
       try { const j = await Store.call('me'); $('#cfgMsg').innerHTML = `<span style="color:var(--ok)">✓ OK · ${esc(j.user.nombre)} (${esc(j.user.rol)})</span>`; } catch (e) { $('#cfgMsg').innerHTML = `<span style="color:var(--crit)">✗ ${esc(e.message)}</span>`; }
       S.cfg = old;
     }], ['Guardar', async () => {
-      const th = $('#cfgTheme').value; LS.set('po_theme', th); applyTheme();
+      const th = $('#cfgTheme').value; LS.set('po_theme', th); applyTheme(); LS.set('po_autosave', $('#cfgAuto').checked); renderSaveState();
       const nu = { apiUrl: $('#cfgUrl').value.trim(), token: $('#cfgTok').value.trim() };
       closeModal();
       if (nu.apiUrl !== (S.cfg.apiUrl || DEFAULT_API) || nu.token !== S.cfg.token) { S.cfg = nu; LS.set('po_cfg', S.cfg); S.dirty = false; S.project = null; await whoAmI(); loadProjects(); }
@@ -1699,6 +1838,7 @@ function parseTable(rows, sheetName) {
     if (pr.bad.length) report.push(`ID ${uid}: predecesoras no reconocidas "${pr.bad.join(', ')}"`);
     const t = { uid, nivel: 0, nombre: String(act).trim(), piso: c.piso >= 0 ? (row[c.piso] ?? '') : '', sub: c.sub >= 0 ? String(row[c.sub] ?? '').toUpperCase() : '', dur, avance: c.av >= 0 ? (+row[c.av] || 0) : 0, preds: pr.preds, ct, cd: ct !== 'ASAP' ? anyToIso(row[c.fres]) : '', notas: '', _xls: ini ? { s: dur === 0 ? (fin || ini) : ini, f: fin || ini } : null };
     if (ct !== 'ASAP' && !t.cd) t.ct = 'ASAP';
+    if (c.piso < 0) { const v = pisoFromName(row[c.zona]) ?? pisoFromName(row[c.fase]); if (v != null) t.piso = v; }
     const keys = c.piso >= 0 ? ['Piso ' + (row[c.piso] ?? '')] : [row[c.fase], row[c.zona]].filter((v, i, a) => v != null && String(v).trim() !== '' && (i === 0 || v !== a[0])).map(String);
     const k = JSON.stringify(keys.length ? keys : ['General']);
     if (!groups.has(k)) groups.set(k, []);
@@ -1795,7 +1935,7 @@ function exportJson() { download(safeName(S.project.nombre) + '.json', JSON.stri
 function exportXlsx() {
   const serial = s => s ? dn(s) + 25569 : null;
   const head = ['ID', 'EDT', 'Nombre', 'Piso', 'Subcontrato', 'Duración (d háb.)', 'Inicio', 'Fin', 'Predecesoras', 'Restricción', 'Fecha restricción', 'Avance real', 'Avance prog. al corte', 'Estado al corte', 'Holgura (d)', 'Crítica', 'LB inicio', 'LB fin', 'Var. fin vs LB (d)', 'Notas'];
-  const aoa = [head].concat(S.tasks.map(t => [t.uid, t._wbs, '   '.repeat(t.nivel - 1) + t.nombre, t._sum ? '' : t.piso, t._sum ? '' : t.sub, t.dur ?? '', serial(t.start), serial(t.finish), predsText(t.preds), t._sum ? '' : CT[t.ct || 'ASAP'], serial(t.cd), +t.avance || 0, t._prog || 0, t._est, t._TF ?? '', t._crit ? 'Sí' : '', serial(t.bls), serial(t.blf), t._var ?? '', t.notas || '']));
+  const aoa = [head].concat(S.tasks.map(t => [t.uid, t._wbs, '   '.repeat(t.nivel - 1) + t.nombre, t._sum ? '' : t._piso, t._sum ? '' : t.sub, t.dur ?? '', serial(t.start), serial(t.finish), predsText(t.preds), t._sum ? '' : CT[t.ct || 'ASAP'], serial(t.cd), +t.avance || 0, t._prog || 0, t._est, t._TF ?? '', t._crit ? 'Sí' : '', serial(t.bls), serial(t.blf), t._var ?? '', t.notas || '']));
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const fmtCol = (ci, z) => { for (let r = 1; r < aoa.length; r++) { const a = XLSX.utils.encode_cell({ r, c: ci }); if (ws[a] && ws[a].t === 'n') ws[a].z = z; } };
   [6, 7, 10, 16, 17].forEach(c => fmtCol(c, 'dd-mm-yyyy')); [11, 12].forEach(c => fmtCol(c, '0%'));
@@ -1808,7 +1948,7 @@ function exportXlsx() {
   const g = [['', '', '', '', '', '', '', ''].concat(weeks.map((d, i) => (i === 0 || new Date(d * DAY).getUTCMonth() !== new Date((d - 7) * DAY).getUTCMonth()) ? ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'][new Date(d * DAY).getUTCMonth()] : '')),
   ['', '', '', '', '', 'INICIO', 'TÉRMINO', 'DÍAS HÁB.'].concat(weeks.map(d => d + 25569)),
   ['N°', 'Piso', 'FAENA', 'SUB-CONTRATO', 'Avance', 'Inicio', 'Término', 'Días hábiles'].concat(weeks.map(() => ''))];
-  L.forEach(t => { const s = dn(t.start), e = dn(t.finish); g.push([t.uid, t.piso, t.nombre, t.sub, +t.avance || 0, serial(t.start), serial(t.finish), t.start ? t.dur : ''].concat(weeks.map(w => (s != null && s <= w + 6 && e >= w) ? 1 : null))); });
+  L.forEach(t => { const s = dn(t.start), e = dn(t.finish); g.push([t.uid, t._piso, t.nombre, t.sub, +t.avance || 0, serial(t.start), serial(t.finish), t.start ? t.dur : ''].concat(weeks.map(w => (s != null && s <= w + 6 && e >= w) ? 1 : null))); });
   const ws2 = XLSX.utils.aoa_to_sheet(g);
   for (let c = 8; c < 8 + weeks.length; c++) { const a = XLSX.utils.encode_cell({ r: 1, c }); if (ws2[a]) ws2[a].z = 'dd-mm'; }
   for (let r = 3; r < g.length; r++) { [5, 6].forEach(c => { const a = XLSX.utils.encode_cell({ r, c }); if (ws2[a] && ws2[a].t === 'n') ws2[a].z = 'dd-mm-yyyy'; }); const a = XLSX.utils.encode_cell({ r, c: 4 }); if (ws2[a]) ws2[a].z = '0%'; }
@@ -1840,7 +1980,7 @@ function exportMSPDI() {
       (t.notas ? `<Notes>${X(t.notas)}</Notes>` : '') +
       (t._sum ? '' : (t.preds || []).map(p => `<PredecessorLink><PredecessorUID>${p.u}</PredecessorUID><Type>${LTN[p.t]}</Type><CrossProject>0</CrossProject><LinkLag>${(p.l || 0) * 4800}</LinkLag><LagFormat>7</LagFormat></PredecessorLink>`).join('')) +
       (t.bls ? `<Baseline><Number>0</Number><Start>${dt(t.bls, '08:00:00')}</Start><Finish>${dt(t.blf, '17:00:00')}</Finish><Duration>${durH(t.bld)}</Duration></Baseline>` : '') +
-      `<ExtendedAttribute><FieldID>188743731</FieldID><Value>${X(t.piso ?? '')}</Value></ExtendedAttribute></Task>`;
+      `<ExtendedAttribute><FieldID>188743731</FieldID><Value>${X(t._piso ?? '')}</Value></ExtendedAttribute></Task>`;
     if (!t._sum && t.sub && rUid[t.sub]) asg += `<Assignment><UID>${au++}</UID><TaskUID>${t.uid}</TaskUID><ResourceUID>${rUid[t.sub]}</ResourceUID><Units>1</Units></Assignment>`;
   });
   const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -1936,5 +2076,4 @@ setUi(S.ui);
 (async () => { readInvite(); await whoAmI(); loadProjects(); })();
 </script>
 </body>
-</html>
 </html>
