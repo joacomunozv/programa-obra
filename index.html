@@ -1540,8 +1540,16 @@ async function loadProjects(selectId) {
   const p = S.projects.find(x => x.id === id) || S.projects[0];
   if (p) await openProject(p.id); else { S.project = null; renderAll(); }
 }
+const fmtWhen = s => { const d = s ? new Date(s) : null; return d && !isNaN(d) ? d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false }) : ''; };
 function fillProjSel() {
-  $('#projSel').innerHTML = S.projects.length ? S.projects.map(p => `<option value="${esc(p.id)}" ${S.project && p.id === S.project.id ? 'selected' : ''}>${esc(S.project && p.id === S.project.id ? S.project.nombre : p.nombre)}</option>`).join('') : '<option>— sin proyectos —</option>';
+  const name = p => S.project && p.id === S.project.id ? S.project.nombre : p.nombre;
+  const count = {}; S.projects.forEach(p => { const n = name(p); count[n] = (count[n] || 0) + 1; });
+  // si hay nombres repetidos, se agrega n° de tareas y fecha de última modificación para distinguirlos
+  $('#projSel').innerHTML = S.projects.length ? S.projects.map(p => {
+    const n = name(p), cur = S.project && p.id === S.project.id;
+    const extra = count[n] > 1 ? ` · ${cur ? S.tasks.length : (p.nTareas ?? '?')} filas · ${fmtWhen(cur ? S.project.actualizado : p.actualizado) || 'v' + (p.version ?? '-')}` : '';
+    return `<option value="${esc(p.id)}" ${cur ? 'selected' : ''}>${esc(n + extra)}</option>`;
+  }).join('') : '<option>— sin proyectos —</option>';
 }
 async function openProject(id) {
   if (S.dirty && !confirm('Hay cambios sin guardar. ¿Descartarlos?')) { fillProjSel(); return; }
@@ -1567,7 +1575,7 @@ async function saveProject(silent, force) {
         await pullAndMerge('combinando antes de guardar');   // trae lo de la otra persona y reintenta
       }
     } while (r.conflict);
-    S.project.version = r.version;
+    S.project.version = r.version; S.project.actualizado = r.actualizado || new Date().toISOString();
     if (Store.remote()) S.project.actualizado_por = S.me?.nombre || S.project.actualizado_por;
     setBase(sent, S.project);
     S.dirty = (S.editSeq || 0) !== seq;                      // si seguiste editando mientras guardaba, queda pendiente
@@ -1602,9 +1610,12 @@ async function createProjectWith(p, tasks, feriados) {
 }
 function projMenu() {
   if (!S.project) return;
-  modal('Proyecto', `<p><b>${esc(S.project.nombre)}</b><br><span class="small muted">id ${esc(S.project.id)} · versión ${S.project.version ?? '-'}</span></p>`,
-    [['Duplicar', () => { closeModal(); const p = Object.assign({}, S.project, { id: uidGen(), nombre: S.project.nombre + ' (copia)', version: null }); createProjectWith(p, S.tasks.map(clean)); }],
-    ['Eliminar', async () => { if (!confirm('¿Eliminar definitivamente "' + S.project.nombre + '"?')) return; closeModal(); await Store.deleteProject(S.project.id); S.project = null; S.dirty = false; LS.del('po_last'); loadProjects(); }, 'dan'],
+  const canDel = !Store.remote() || S.rol === 'admin';
+  modal('Proyecto', `<p><b>${esc(S.project.nombre)}</b><br><span class="small muted">${S.tasks.filter(t => !t._sum).length} tareas · versión ${S.project.version ?? '-'}${S.project.actualizado ? ' · modificado ' + fmtWhen(S.project.actualizado) : ''}${S.project.actualizado_por ? ' por ' + esc(S.project.actualizado_por) : ''}<br>id ${esc(S.project.id)}</span></p>
+    <p class="small muted">Para dejar un solo programa: abre cada uno desde el selector, revisa cuál tiene tus cambios y elimina los demás. Al eliminar se borran solo las tareas de ese programa.</p>`,
+    [['Renombrar', () => { const n = prompt('Nuevo nombre del programa:', S.project.nombre); if (!n || !n.trim()) return; snap(); S.project.nombre = n.trim(); closeModal(); markDirty(); fillProjSel(); if (!Store.remote() || !LS.get('po_autosave', true)) saveProject(true); }],
+    ['Duplicar', () => { closeModal(); const p = Object.assign({}, S.project, { id: uidGen(), nombre: S.project.nombre + ' (copia)', version: null }); createProjectWith(p, S.tasks.map(clean)); }],
+    ...(canDel ? [['Eliminar', async () => { if (!confirm(`¿Eliminar definitivamente "${S.project.nombre}" (${S.tasks.filter(t => !t._sum).length} tareas)? No se puede deshacer.`)) return; closeModal(); try { await Store.deleteProject(S.project.id); toast('Programa eliminado'); } catch (e) { toast('Error: ' + e.message, 5000); return; } S.project = null; S.dirty = false; LS.del('po_last'); loadProjects(); }, 'dan']] : []),
     ['Cerrar', closeModal]]);
 }
 
@@ -1749,7 +1760,7 @@ async function onFile(file) {
     modal('Importar desde Excel', `<p class="small muted">Elige las hojas a importar. Cada hoja queda como un grupo de tareas. Ojo: "PROGRAMA 2,0" y "FECHAS PF" describen las mismas partidas; importa solo una de ellas al mismo programa.</p>
       ${usable.map(s => `<label class="sheetrow"><input type="checkbox" value="${esc(s.n)}" ${s === first ? 'checked' : ''}><b>${esc(s.n)}</b><span class="pill">${s.kind === 'grid' ? 'Carta Gantt semanal' : 'Tabla tipo Project'}</span></label>`).join('')}
       ${fer ? `<label class="sheetrow"><input type="checkbox" id="impFer" checked> Importar también la hoja <b>${esc(fer.n)}</b> al calendario</label>` : ''}
-      <div class="f" style="margin-top:12px"><label>Destino</label><select class="inp" id="impDest"><option value="new">Nuevo programa</option>${S.project ? '<option value="replace">Reemplazar programa actual</option><option value="append">Agregar al programa actual</option>' : ''}</select></div>
+      <div class="f" style="margin-top:12px"><label>Destino</label><select class="inp" id="impDest">${S.project ? `<option value="replace">Reemplazar "${esc(S.project.nombre)}" (actual)</option><option value="append">Agregar al programa actual</option>` : ''}<option value="new">Crear programa nuevo</option></select></div>
       <div class="f"><label>Nombre (si es nuevo)</label><input class="inp" id="impName" value="${esc(file.name.replace(/\.\w+$/, '').replace(/_+/g, ' '))}"></div>`,
       [['Cancelar', closeModal], ['Importar', () => {
         const chosen = $$('#modal .sheetrow input[value]').filter(i => i.checked).map(i => sheets.find(s => s.n === i.value));
@@ -1759,6 +1770,8 @@ async function onFile(file) {
         if (feriados) Cal.build(feriados, S.project?.config?.sat); else Cal.build(S.feriados.length ? S.feriados : DEFAULT_FERIADOS, false);
         const results = chosen.map(s => s.kind === 'grid' ? parseGrid(s.rows, s.n) : parseTable(s.rows, s.n));
         const dest = $('#impDest').value, nm = $('#impName').value.trim();
+        if (dest === 'new' && S.projects.some(p => p.nombre === nm) && !confirm(`Ya existe un programa llamado "${nm}". ¿Crear otro con el mismo nombre?`)) return;
+        if (dest === 'replace' && !confirm(`Se reemplazarán las tareas de "${S.project.nombre}" por las del archivo (Ctrl+Z lo deshace antes de guardar). ¿Continuar?`)) return;
         closeModal(); importConfirm(results, nm, feriados, null, dest);
       }, 'pri']]);
   } catch (e) { console.error(e); toast('Error al leer archivo: ' + e.message, 6000); }
