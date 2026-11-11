@@ -72,6 +72,9 @@ button{cursor:pointer}
 #gwrap{flex:1;overflow:auto;background:var(--panel);position:relative;min-width:0}
 :root{--rh:26px;--hh:46px}
 .lhead{position:sticky;top:0;z-index:3;display:grid;background:var(--panel2);border-bottom:1px solid var(--line);height:var(--hh);align-items:end}
+.lhead .h.sortable{cursor:pointer}
+.lhead .h.sortable:hover{color:var(--text)}
+.lhead .h .sd{margin-left:3px;color:var(--accent)}
 .lhead .h{padding:4px 6px;font-weight:600;font-size:11.5px;color:var(--muted);border-right:1px solid var(--line2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:100%;display:flex;align-items:flex-end}
 .row{display:grid;height:var(--rh);border-bottom:1px solid var(--line2);cursor:default}
 .row .c{font-size:12.5px;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:var(--rh);border-right:1px solid var(--line2);font-variant-numeric:tabular-nums}
@@ -229,6 +232,7 @@ body.isadmin .admin-only{display:inline-flex!important}
   <div class="grp edit-only">
     <button class="rb" id="bLink" title="Vincular seleccionadas FC (Ctrl+F2)"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>Vincular</button>
     <button class="rb" id="bUnlink" title="Desvincular seleccionadas"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7M4 4l16 16"/></svg></button>
+    <button class="rb" id="bSort" title="Ordenar partidas dentro de cada grupo"><svg viewBox="0 0 24 24"><path d="M7 4v16M3 16l4 4 4-4M14 6h7M14 12h5M14 18h3"/></svg>Ordenar</button>
     <button class="rb" id="bInfo" title="Información de la tarea (Shift+F2)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>Info</button>
   </div>
   <div class="grp hide-m edit-only">
@@ -604,7 +608,7 @@ function cellHtml(t, c) {
 }
 function renderGrid() {
   $('#lhead').style.gridTemplateColumns = gridTpl;
-  $('#lhead').innerHTML = COLS.map(c => `<div class="h">${c.l}</div>`).join('');
+  $('#lhead').innerHTML = COLS.map(c => `<div class="h ${SORT_KEYS[c.k] ? 'sortable' : ''}" data-k="${c.k}" title="${SORT_KEYS[c.k] ? 'Clic para ordenar por ' + SORT_KEYS[c.k].l.toLowerCase() : ''}">${c.l}${S.sortK === c.k ? `<span class="sd">${S.sortD > 0 ? '▲' : '▼'}</span>` : ''}</div>`).join('');
   const W = COLS.reduce((a, c) => a + c.w, 0);
   $('#lhead').style.width = W + 'px';
   const html = S.vis.map(t => {
@@ -771,10 +775,10 @@ function renderEmpty() {
 const PERSIST = ['uid', 'nivel', 'nombre', 'piso', 'sub', 'dur', 'avance', 'preds', 'ct', 'cd', 'bls', 'blf', 'bld', 'notas', 'start', 'finish'];
 const clean = t => { const o = {}; PERSIST.forEach(k => { o[k] = t[k]; }); return o; };
 const snapshot = () => JSON.stringify({ tasks: S.tasks.map(clean), project: S.project });
-function snap() { if (!canEdit()) { toast('Tu acceso es de solo lectura'); throw new Error('RO'); } S.undo.push(snapshot()); if (S.undo.length > 60) S.undo.shift(); S.redo = []; }
+function snap(keepSort) { if (!keepSort) S.sortK = null; if (!canEdit()) { toast('Tu acceso es de solo lectura'); throw new Error('RO'); } S.undo.push(snapshot()); if (S.undo.length > 60) S.undo.shift(); S.redo = []; }
 function restore(json) { const o = JSON.parse(json); S.tasks = o.tasks; S.project = o.project; }
-function undo() { if (!S.undo.length) return; S.redo.push(snapshot()); restore(S.undo.pop()); markDirty(); recalc(); }
-function redo() { if (!S.redo.length) return; S.undo.push(snapshot()); restore(S.redo.pop()); markDirty(); recalc(); }
+function undo() { if (!S.undo.length) return; S.sortK = null; S.redo.push(snapshot()); restore(S.undo.pop()); markDirty(); recalc(); }
+function redo() { if (!S.redo.length) return; S.sortK = null; S.undo.push(snapshot()); restore(S.redo.pop()); markDirty(); recalc(); }
 function markDirty() { S.dirty = true; renderSaveState(); if (!Store.remote()) autosaveLocal(); }
 let _asT; function autosaveLocal() { clearTimeout(_asT); _asT = setTimeout(() => saveProject(true), 800); }
 
@@ -864,6 +868,100 @@ function indent(dir) {
   });
   markDirty(); recalc();
 }
+/* =====================================================================
+   ORDENAR (reordena hermanos dentro de cada grupo, conservando la jerarquía)
+   ===================================================================== */
+/** Comparación "natural": separa números (con signo) de texto → "Piso -8" < "Piso -7" < "Piso 2" < "Piso 10" */
+function natCmp(a, b) {
+  const tok = s => {
+    const raw = String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').match(/\d+(?:[.,]\d+)?|\D+/g) || [];
+    // "-8" es negativo si el guion va al inicio o tras un espacio ("Piso -8"); no en "CCDD-2"
+    for (let i = 0; i < raw.length - 1; i++) {
+      if (/(^|\s)-$/.test(raw[i]) && /^\d/.test(raw[i + 1])) { raw[i] = raw[i].slice(0, -1); raw[i + 1] = '-' + raw[i + 1]; }
+    }
+    return raw.filter(x => x !== '');
+  };
+  const A = tok(a), B = tok(b);
+  for (let i = 0; i < Math.min(A.length, B.length); i++) {
+    const x = A[i], y = B[i], nx = /^-?\d/.test(x), ny = /^-?\d/.test(y);
+    if (nx && ny) { const d = parseFloat(x.replace(',', '.')) - parseFloat(y.replace(',', '.')); if (d) return d; }
+    else if (x !== y) return x.trim().localeCompare(y.trim(), 'es');
+  }
+  return A.length - B.length;
+}
+const SORT_KEYS = {
+  start: { l: 'Comienzo', v: t => t.start ? dn(t.start) : null },
+  finish: { l: 'Fin', v: t => t.finish ? dn(t.finish) : null },
+  nombre: { l: 'Nombre (alfanumérico)', v: t => t.nombre, nat: 1 },
+  id: { l: 'ID', v: t => +t.uid },
+  piso: { l: 'Piso', v: t => t._sum ? null : t.piso, nat: 1 },
+  sub: { l: 'Subcontrato', v: t => t._sum ? null : (t.sub || null), nat: 1 },
+  dur: { l: 'Duración', v: t => t.dur ?? null },
+  avance: { l: '% Avance', v: t => +t.avance || 0 },
+  tf: { l: 'Holgura', v: t => t._TF ?? null },
+};
+/**
+ * key: campo · dir: 1 asc / -1 desc · scope: 'all' | 'sel' · groups: también ordena los grupos (resúmenes) entre sí
+ * Las tareas sin valor (p. ej. sin programar) quedan al final. Desempate: comienzo y luego ID.
+ */
+function sortTasks(key, dir, scope, groups) {
+  const K = SORT_KEYS[key]; if (!K) return;
+  // árbol
+  const root = { ch: [] }, stack = [root];
+  S.tasks.forEach(t => { const n = { t, ch: [] }; while (stack.length > t.nivel) stack.pop(); stack[stack.length - 1].ch.push(n); stack.push(n); });
+  // grupos a ordenar
+  let targets = null;
+  if (scope === 'sel') {
+    targets = new Set();
+    selectedTasks().forEach(t => targets.add(t._sum ? t : (t._par || null)));
+    if (!targets.size) { toast('Selecciona un grupo (ej. "Piso -8") o una tarea dentro de él'); return; }
+  }
+  const cmp = (A, B) => {
+    const a = K.v(A.t), b = K.v(B.t);
+    if (a == null && b != null) return 1; if (b == null && a != null) return -1;
+    let r = 0;
+    if (a != null && b != null) r = K.nat ? natCmp(a, b) : (a - b);
+    r *= dir;
+    if (!r) r = (dn(A.t.start) ?? 1e9) - (dn(B.t.start) ?? 1e9);
+    if (!r) r = A.t.uid - B.t.uid;
+    return r;
+  };
+  const walk = (node) => {
+    const isTarget = targets === null || targets.has(node.t || null);
+    if (isTarget && node.ch.length > 1) {
+      const leaves = node.ch.filter(n => !n.ch.length), subs = node.ch.filter(n => n.ch.length);
+      if (groups) node.ch.sort(cmp);
+      else if (subs.length && leaves.length) {
+        // mantiene la posición de los subgrupos y ordena solo las tareas sueltas en sus huecos
+        const sorted = leaves.slice().sort(cmp); let i = 0;
+        node.ch = node.ch.map(n => n.ch.length ? n : sorted[i++]);
+      } else if (!subs.length) node.ch.sort(cmp);
+    }
+    node.ch.forEach(walk);
+  };
+  if (targets && targets.has(null)) targets.add(undefined);
+  walk(root);
+  const out = []; const flat = n => n.ch.forEach(c => { out.push(c.t); flat(c); }); flat(root);
+  snap();
+  S.tasks = out; S.sortK = key; S.sortD = dir;
+  markDirty(); recalc();
+  toast(`Ordenado por ${K.l.toLowerCase()} ${dir > 0 ? 'ascendente' : 'descendente'}${scope === 'sel' ? ' (grupo seleccionado)' : ''} · Ctrl+Z para deshacer`);
+}
+function openSort() {
+  if (!canEdit()) return;
+  const sel = selectedTasks(); const g = sel.length ? (sel[0]._sum ? sel[0] : sel[0]._par) : null;
+  modal('Ordenar partidas', `
+    <div class="f2"><div class="f"><label>Ordenar por</label><select class="inp" id="soK">${Object.entries(SORT_KEYS).map(([k, v]) => `<option value="${k}" ${k === (S.sortK || 'start') ? 'selected' : ''}>${v.l}</option>`).join('')}</select></div>
+    <div class="f"><label>Sentido</label><select class="inp" id="soD"><option value="1">Ascendente (A→Z, más antiguo primero)</option><option value="-1">Descendente</option></select></div></div>
+    <div class="f"><label>Alcance</label><select class="inp" id="soS">
+      <option value="all">Todas las partidas, dentro de cada grupo</option>
+      ${g ? `<option value="sel" selected>Solo dentro de "${esc(g.nombre)}"</option>` : '<option value="sel" disabled>Solo grupo seleccionado (selecciona primero un piso)</option>'}
+    </select></div>
+    <label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="soG"> Ordenar también los grupos entre sí (ej. pisos por fecha de inicio)</label>
+    <p class="small muted" style="margin-top:10px">Las partidas no salen de su grupo. Las que no tienen valor (sin programar) quedan al final. El orden queda guardado al presionar Guardar; Ctrl+Z lo deshace.</p>`,
+    [['Cancelar', closeModal], ['Ordenar', () => { const k = $('#soK').value, d = +$('#soD').value, sc = $('#soS').value, gr = $('#soG').checked; closeModal(); sortTasks(k, d, sc, gr); }, 'pri']]);
+}
+
 function moveSel(dir) {
   const sel = selectedTasks(); if (sel.length !== 1) { toast('Selecciona una tarea para moverla'); return; }
   const t = sel[0], end = subtreeEnd(t), block = S.tasks.slice(t._i, end);
@@ -1737,6 +1835,12 @@ function bind() {
   $('#bAdd').onclick = () => newTask(false); $('#bMs').onclick = () => newTask(true); $('#bDel').onclick = deleteSel;
   $('#bIn').onclick = () => indent(1); $('#bOut').onclick = () => indent(-1);
   $('#bUp').onclick = () => moveSel(-1); $('#bDown').onclick = () => moveSel(1);
+  $('#bSort').onclick = openSort;
+  // clic en encabezado: ordena por esa columna dentro de cada grupo (2º clic invierte)
+  $('#lhead').addEventListener('click', e => {
+    const h = e.target.closest('.h.sortable'); if (!h || !canEdit()) return;
+    const k = h.dataset.k; sortTasks(k, S.sortK === k ? -S.sortD : 1, 'all', false);
+  });
   $('#bLink').onclick = linkSel; $('#bUnlink').onclick = unlinkSel; $('#bInfo').onclick = openDrawer;
   $$('[data-pct]').forEach(b => b.onclick = () => setPct(+b.dataset.pct));
   const zs = ['dia', 'semana', 'mes', 'trim'];
