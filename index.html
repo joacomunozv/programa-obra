@@ -102,7 +102,7 @@ button{cursor:pointer}
 .hol{position:absolute;top:0;bottom:0;background:var(--hol)}
 .vline{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--today);z-index:2}
 .vline.corte{border-left-color:var(--corte)}
-.grow{position:absolute;left:0;right:0;height:var(--rh);border-bottom:1px solid var(--line2)}
+.grow{position:absolute;left:0;right:0;height:var(--rh);pointer-events:none}
 .grow.sel{background:var(--sel)}
 .bar{position:absolute;height:14px;border-radius:3px;background:var(--bar);z-index:1;cursor:grab;touch-action:none}
 .bar .pg{position:absolute;left:0;top:5px;height:4px;background:var(--bar-prog);border-radius:2px}
@@ -611,12 +611,44 @@ function renderGrid() {
   $('#lhead').innerHTML = COLS.map(c => `<div class="h ${SORT_KEYS[c.k] ? 'sortable' : ''}" data-k="${c.k}" title="${SORT_KEYS[c.k] ? 'Clic para ordenar por ' + SORT_KEYS[c.k].l.toLowerCase() : ''}">${c.l}${S.sortK === c.k ? `<span class="sd">${S.sortD > 0 ? '▲' : '▼'}</span>` : ''}</div>`).join('');
   const W = COLS.reduce((a, c) => a + c.w, 0);
   $('#lhead').style.width = W + 'px';
-  const html = S.vis.map(t => {
-    const cls = ['row', t._sum ? 'sum' : '', S.sel.has(t.uid) ? 'sel' : '', S.showCrit && t._crit && !t._sum ? 'crit' : ''].join(' ');
-    return `<div class="${cls}" data-u="${t.uid}" style="grid-template-columns:${gridTpl};width:${W}px">` +
-      COLS.map(c => `<div class="c ${c.r ? 'r' : ''} ${c.k === 'nombre' ? 'nm' : ''} ${c.k === 'id' ? 'id' : ''} ${c.k === 'ind' ? 'ind' : ''} ${c.f && !(t._sum && c.f !== 'nombre') ? 'ed' : ''}" data-k="${c.k}">${cellHtml(t, c)}</div>`).join('') + '</div>';
-  }).join('');
-  $('#lbody').innerHTML = html + `<div style="height:40px"></div>`;
+  // Tabla virtual: solo se dibujan las filas visibles (+ margen). Con 500+ partidas
+  // redibujar todo tomaba >1 s por cambio; así toma unos milisegundos.
+  const lb = $('#lbody');
+  lb.style.height = (S.vis.length * G.RH + 40) + 'px'; lb.style.width = W + 'px'; lb.style.position = 'relative';
+  if (!$('#lrows')) lb.innerHTML = '<div id="lrows" style="position:absolute;left:0;top:0"></div>';
+  VG.from = VG.to = -1; paintRows(true);
+}
+const VG = { from: -1, to: -1, raf: 0 };
+function paintGanttSel() {
+  const g = $('#gsel'); if (!g) return;
+  let h = ''; S.vis.forEach((t, i) => { if (S.sel.has(t.uid)) h += `<div class="grow sel" style="top:${i * G.RH}px"></div>`; });
+  g.innerHTML = h;
+}
+/** Fila del Gantt bajo el puntero (las filas ya no son elementos). */
+function ganttRowAt(e) { const r = $('#gbody').getBoundingClientRect(); const i = Math.floor((e.clientY - r.top) / uiZ() / G.RH); return S.vis[i] || null; }
+function rowHtml(t, W) {
+  const cls = ['row', t._sum ? 'sum' : '', S.sel.has(t.uid) ? 'sel' : '', S.showCrit && t._crit && !t._sum ? 'crit' : ''].join(' ');
+  return `<div class="${cls}" data-u="${t.uid}" style="grid-template-columns:${gridTpl};width:${W}px">` +
+    COLS.map(c => `<div class="c ${c.r ? 'r' : ''} ${c.k === 'nombre' ? 'nm' : ''} ${c.k === 'id' ? 'id' : ''} ${c.k === 'ind' ? 'ind' : ''} ${c.f && !(t._sum && c.f !== 'nombre') ? 'ed' : ''}" data-k="${c.k}">${cellHtml(t, c)}</div>`).join('') + '</div>';
+}
+function paintRows(force) {
+  const L = $('#lwrap'), box = $('#lrows'); if (!box) return;
+  const RH = G.RH, H = L.clientHeight || 800;
+  const from = Math.max(0, Math.floor(L.scrollTop / RH) - 15), to = Math.min(S.vis.length, Math.ceil((L.scrollTop + H) / RH) + 15);
+  if (!force && from === VG.from && to === VG.to) return;
+  if (!force && document.activeElement && box.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return; // no borrar una celda en edición
+  VG.from = from; VG.to = to;
+  const W = COLS.reduce((a, c) => a + c.w, 0);
+  box.style.transform = `translateY(${from * RH}px)`;
+  box.innerHTML = S.vis.slice(from, to).map(t => rowHtml(t, W)).join('');
+}
+/** Asegura que la fila esté dibujada y visible (para editar o navegar con flechas). */
+function ensureRowVisible(uid) {
+  const i = S.vis.findIndex(t => t.uid === uid); if (i < 0) return null;
+  const L = $('#lwrap'), RH = G.RH, top = i * RH, hh = $('#lhead').offsetHeight;
+  if (top < L.scrollTop) L.scrollTop = top;
+  else if (top + RH > L.scrollTop + L.clientHeight - hh - 16) L.scrollTop = top + RH - L.clientHeight + hh + 16;
+  paintRows(); return $(`#lbody .row[data-u="${uid}"]`);
 }
 
 /* =====================================================================
@@ -682,7 +714,6 @@ function renderGantt() {
   S.vis.forEach((t, i) => {
     rowOf.set(t.uid, i);
     const y = i * RH;
-    rows += `<div class="grow ${S.sel.has(t.uid) ? 'sel' : ''}" data-u="${t.uid}" style="top:${y}px"></div>`;
     if (!t.start) return;
     const s = dn(t.start), e = dn(t.finish);
     const crit = S.showCrit && t._crit ? 'crit' : '';
@@ -722,7 +753,11 @@ function renderGantt() {
   const defs = `<defs><marker id="ah" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0L6,3L0,6z" fill="var(--muted)" stroke="none"/></marker><marker id="ahc" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0L6,3L0,6z" fill="var(--crit)" stroke="none"/></marker></defs>`;
   const body = $('#gbody');
   body.style.width = W + 'px'; body.style.height = H + 'px';
-  body.innerHTML = `<div class="gbg" style="${bg}">${hol}</div>${rows}${lines}<svg id="garrows" width="${W}" height="${H}">${defs}${paths}</svg>${bars}<svg id="tmpLink" width="${W}" height="${H}"></svg>`;
+  // líneas de fila como fondo (sin un div por fila); la selección se dibuja aparte en #gsel
+  const rowLines = `repeating-linear-gradient(180deg,transparent 0 ${RH - 1}px,var(--line2) ${RH - 1}px ${RH}px)`;
+  bg = bg ? bg.replace('background:', `background:${rowLines},`) : `background:${rowLines}`;
+  body.innerHTML = `<div class="gbg" style="${bg}">${hol}</div><div id="gsel"></div>${lines}<svg id="garrows" width="${W}" height="${H}">${defs}${paths}</svg>${bars}<svg id="tmpLink" width="${W}" height="${H}"></svg>`;
+  paintGanttSel();
 }
 
 /* =====================================================================
@@ -1007,6 +1042,7 @@ function startEdit(uid, k) {
   const t = S.byUid.get(uid); if (!t) return;
   const col = COLS.find(c => c.k === k); if (!col || !col.f) return;
   if (t._sum && col.f !== 'nombre') return;
+  ensureRowVisible(uid);
   const cell = $(`#lbody .row[data-u="${uid}"] .c[data-k="${k}"]`); if (!cell) return;
   let val = '';
   switch (col.f) {
@@ -1047,7 +1083,7 @@ function startEdit(uid, k) {
 /* ---------- selección ---------- */
 function syncSel() {
   $$('#lbody .row').forEach(r => r.classList.toggle('sel', S.sel.has(+r.dataset.u)));
-  $$('#gbody .grow').forEach(r => r.classList.toggle('sel', S.sel.has(+r.dataset.u)));
+  paintGanttSel();
   if ($('#drawer').classList.contains('open')) renderDrawer();
 }
 function clickRow(uid, e) {
@@ -1112,8 +1148,8 @@ function initGanttEvents() {
   const body = $('#gbody');
   let drag = null;
   body.addEventListener('pointerdown', e => {
-    const bar = e.target.closest('.bar'); const row = e.target.closest('.grow');
-    if (!bar) { if (row) clickRow(+row.dataset.u, e); return; }
+    const bar = e.target.closest('.bar');
+    if (!bar) { const t = ganttRowAt(e); if (t) clickRow(t.uid, e); return; }
     const uid = +bar.dataset.u, t = S.byUid.get(uid); if (!t) return;
     if (!S.sel.has(uid) || !(e.ctrlKey || e.metaKey)) { S.sel = new Set([uid]); S.anchor = uid; syncSel(); }
     if (t._sum || !canEdit()) return;
@@ -1139,8 +1175,8 @@ function initGanttEvents() {
       $('#tmpLink').innerHTML = '';
       d.bar.style.pointerEvents = 'none';
       const el = document.elementFromPoint(e.clientX, e.clientY); d.bar.style.pointerEvents = '';
-      const tb = el && el.closest('.bar'); const tr = el && el.closest('.grow');
-      const target = S.byUid.get(+(tb?.dataset.u || tr?.dataset.u));
+      const tb = el && el.closest('.bar');
+      const target = tb ? S.byUid.get(+tb.dataset.u) : ganttRowAt(e);
       if (target && target !== d.t && !target._sum) {
         snap(); if (!target.preds.some(p => p.u === d.t.uid)) target.preds.push({ u: d.t.uid, t: 'FS', l: 0 });
         if (target.dur == null) target.dur = 1; markDirty(); recalc(); toast(`Vínculo ${d.t.uid} → ${target.uid} (FC)`);
@@ -1156,7 +1192,7 @@ function initGanttEvents() {
     markDirty(); recalc();
   };
   body.addEventListener('pointerup', end); body.addEventListener('pointercancel', end);
-  body.addEventListener('dblclick', e => { const b = e.target.closest('.bar,.grow'); if (b) { S.sel = new Set([+b.dataset.u]); syncSel(); openDrawer(); } });
+  body.addEventListener('dblclick', e => { const b = e.target.closest('.bar'); const t = b ? S.byUid.get(+b.dataset.u) : ganttRowAt(e); if (t) { S.sel = new Set([t.uid]); syncSel(); openDrawer(); } });
 }
 function initGridEvents() {
   const lb = $('#lbody');
@@ -1173,6 +1209,7 @@ function initGridEvents() {
   });
   // scroll sincronizado
   const L = $('#lwrap'), R = $('#gwrap'); let lock = false;
+  L.addEventListener('scroll', () => { cancelAnimationFrame(VG.raf); VG.raf = requestAnimationFrame(() => paintRows()); }, { passive: true });
   L.addEventListener('scroll', () => { if (lock) { lock = false; return; } if (R.scrollTop !== L.scrollTop) { lock = true; R.scrollTop = L.scrollTop; } });
   R.addEventListener('scroll', () => { if (lock) { lock = false; return; } if (L.scrollTop !== R.scrollTop) { lock = true; L.scrollTop = R.scrollTop; } });
   // splitter
@@ -1854,6 +1891,7 @@ function bind() {
   $('#gwrap').addEventListener('wheel', e => { if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault(); setZoom('custom', clamp(G.ppd * (e.deltaY < 0 ? 1.2 : 1 / 1.2), 0.25, 40)); }, { passive: false });
   ['#lwrap', '#view'].forEach(sel => $(sel).addEventListener('wheel', e => { if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault(); setUi(uiZ() + (e.deltaY < 0 ? 0.1 : -0.1)); }, { passive: false }));
   $('#bUiIn').onclick = () => setUi(uiZ() + 0.1); $('#bUiOut').onclick = () => setUi(uiZ() - 0.1); $('#bUiReset').onclick = () => setUi(1);
+  window.addEventListener('resize', () => paintRows());
   window.addEventListener('resize', () => { if (S.zoom === 'fit' && S.view === 'gantt' && S.project) renderGantt(); });
   $('#zoomSel').value = S.zoom; $('#zoomSel').onchange = e => setZoom(e.target.value);
   // +/− pasan al nivel fijo más cercano en esa dirección
@@ -1882,7 +1920,7 @@ function bind() {
     else if (k === 'F2' && S.sel.size === 1) { e.preventDefault(); startEdit([...S.sel][0], 'nombre'); }
     else if ((k === 'ArrowDown' || k === 'ArrowUp') && S.view === 'gantt' && S.sel.size) {
       e.preventDefault(); const i = S.vis.findIndex(t => t.uid === [...S.sel].pop()); const n = S.vis[clamp(i + (k === 'ArrowDown' ? 1 : -1), 0, S.vis.length - 1)];
-      if (n) { S.sel = new Set([n.uid]); S.anchor = n.uid; syncSel(); const r = $(`#lbody .row[data-u="${n.uid}"]`); r && r.scrollIntoView({ block: 'nearest' }); }
+      if (n) { S.sel = new Set([n.uid]); S.anchor = n.uid; syncSel(); ensureRowVisible(n.uid); }
     }
   });
   window.addEventListener('beforeunload', e => { if (S.dirty && Store.remote()) { e.preventDefault(); e.returnValue = ''; } });
@@ -1898,4 +1936,5 @@ setUi(S.ui);
 (async () => { readInvite(); await whoAmI(); loadProjects(); })();
 </script>
 </body>
+</html>
 </html>
